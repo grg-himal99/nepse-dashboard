@@ -1,0 +1,51 @@
+name: run
+# on:
+#   push:
+#     branches:
+#       - master
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '00 05 * * 0-4'
+    - cron: '30 05 * * 0-4'
+    - cron: '00 06 * * 0-4'
+    - cron: '30 06 * * 0-4'
+    - cron: '00 07 * * 0-4'
+    - cron: '30 07 * * 0-4'
+    - cron: '00 08 * * 0-4'
+    - cron: '30 08 * * 0-4'
+    - cron: '45 08 * * 0-4'
+  
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install git+https://github.com/basic-bgnr/NepseUnofficialApi
+      - name: Execute Scraping Script
+        run: |
+          # python depth_v2.py
+          python sscript.py
+          
+      - name: Commit and Push Files
+        run: |
+           git config --local user.email "madhuko@outlook.com"
+           git config --local user.name "madhuko"        
+           git add .
+           git commit -m "Operation Completed successfully" -a
+           git push origin main
