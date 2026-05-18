@@ -756,19 +756,60 @@
   </div>
 
   <!-- Order Book Sentiment -->
-  <div class="two-col" id="sentimentRow" style="display:none">
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><div class="dot" style="background:var(--green)"></div>Strongest Buy Pressure</div>
+  <div class="panel" id="sentimentRow" style="display:none">
+    <!-- Filter bar -->
+    <div class="panel-header" style="flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1">
+        <div class="panel-title">
+          <div class="dot" style="background:var(--accent)"></div>
+          Order Book Sentiment
+        </div>
         <span style="font-size:11px;color:var(--muted)" id="depthAsOf"></span>
       </div>
-      <div class="panel-body" id="bullishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><div class="dot" style="background:var(--red)"></div>Strongest Sell Pressure</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <!-- Instrument type chips -->
+        <div id="sentTypeFilters" style="display:flex;gap:4px">
+          <button class="filter-chip active" onclick="setSentimentFilter('type','All',this)">All</button>
+          <button class="filter-chip" onclick="setSentimentFilter('type','Equity',this)">Equity</button>
+          <button class="filter-chip" onclick="setSentimentFilter('type','Mutual Funds',this)">Mutual Fund</button>
+          <button class="filter-chip" onclick="setSentimentFilter('type','Non-Convertible Debentures',this)">Debenture</button>
+          <button class="filter-chip" onclick="setSentimentFilter('type','Preference Shares',this)">Preference</button>
+        </div>
+        <!-- Sector dropdown -->
+        <select id="sentSectorFilter" onchange="setSentimentFilter('sector',this.value)" style="
+          background:var(--surface2);border:1px solid var(--border);color:var(--text);
+          padding:5px 10px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;outline:none;">
+          <option value="All">All Sectors</option>
+          <option>Commercial Banks</option>
+          <option>Development Banks</option>
+          <option>Finance</option>
+          <option>Hotels And Tourism</option>
+          <option>Hydro Power</option>
+          <option>Investment</option>
+          <option>Life Insurance</option>
+          <option>Manufacturing And Processing</option>
+          <option>Microfinance</option>
+          <option>Mutual Fund</option>
+          <option>Non Life Insurance</option>
+          <option>Others</option>
+          <option>Tradings</option>
+        </select>
       </div>
-      <div class="panel-body" id="bearishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <!-- Bullish / Bearish columns -->
+    <div class="two-col" style="gap:0">
+      <div>
+        <div style="padding:10px 16px;font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">
+          ▲ Strongest Buy Pressure
+        </div>
+        <div id="bullishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div style="border-left:1px solid var(--border)">
+        <div style="padding:10px 16px;font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">
+          ▼ Strongest Sell Pressure
+        </div>
+        <div id="bearishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
     </div>
   </div>
 
@@ -1021,6 +1062,9 @@
   let pfCurrentFilter = 'all';
   let planStock = null;         // stock currently open in modal
   let depthMap = {};            // symbol → {imbalance, totalBuyQty, totalSellQty}
+  let depthData = [];           // full depth array (enriched with type/sector)
+  let companyMap = {};          // symbol → {sectorName, instrumentType}
+  let sentimentFilter = { type: 'All', sector: 'All' };
   let histChart = null;
 
   // ── Helpers ───────────────────────────────────────
@@ -1218,22 +1262,48 @@
       const data = await apiFetch('/depth/today');
       if(!data || !data.length) return;
       depthMap = {};
-      data.forEach(d => { depthMap[d.symbol] = d; });
+      // Enrich each entry with company type/sector info
+      depthData = data.map(d => {
+        const info = companyMap[d.symbol] || {};
+        depthMap[d.symbol] = d;
+        return { ...d, instrumentType: info.instrumentType || '', sectorName: info.sectorName || '' };
+      });
 
       // Show sentiment panels
-      const row = document.getElementById('sentimentRow');
-      row.style.display = '';
+      document.getElementById('sentimentRow').style.display = '';
       const ts = data[0].timestamp ? new Date(data[0].timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('depthAsOf').textContent = ts ? `as of ${ts}` : '';
 
-      const bullish = data.filter(d=>d.imbalance>0).sort((a,b)=>b.imbalance-a.imbalance).slice(0,8);
-      const bearish = data.filter(d=>d.imbalance<0).sort((a,b)=>a.imbalance-b.imbalance).slice(0,8);
-
-      document.getElementById('bullishList').innerHTML = bullish.map(d => sentimentCard(d, true)).join('');
-      document.getElementById('bearishList').innerHTML = bearish.map(d => sentimentCard(d, false)).join('');
-
+      renderSentiment();
       filterStocks(); // re-render table with order flow column
     } catch {}
+  }
+
+  function renderSentiment() {
+    let filtered = depthData;
+    if(sentimentFilter.type !== 'All') {
+      filtered = filtered.filter(d => d.instrumentType === sentimentFilter.type);
+    }
+    if(sentimentFilter.sector !== 'All') {
+      filtered = filtered.filter(d => d.sectorName === sentimentFilter.sector);
+    }
+    const bullish = filtered.filter(d=>d.imbalance>0).sort((a,b)=>b.imbalance-a.imbalance).slice(0,8);
+    const bearish = filtered.filter(d=>d.imbalance<0).sort((a,b)=>a.imbalance-b.imbalance).slice(0,8);
+    document.getElementById('bullishList').innerHTML = bullish.length
+      ? bullish.map(d => sentimentCard(d, true)).join('')
+      : `<div class="no-data" style="padding:16px">No data</div>`;
+    document.getElementById('bearishList').innerHTML = bearish.length
+      ? bearish.map(d => sentimentCard(d, false)).join('')
+      : `<div class="no-data" style="padding:16px">No data</div>`;
+  }
+
+  function setSentimentFilter(key, value, el) {
+    sentimentFilter[key] = value;
+    if(key === 'type' && el) {
+      document.querySelectorAll('#sentTypeFilters .filter-chip').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+    renderSentiment();
   }
 
   function sentimentCard(d, isBuy) {
@@ -1377,9 +1447,22 @@
     }
   }
 
+  async function loadCompanyList() {
+    try {
+      const list = await apiFetch('/CompanyList');
+      companyMap = {};
+      (list || []).forEach(c => {
+        companyMap[c.symbol] = {
+          sectorName: c.sectorName || '',
+          instrumentType: c.instrumentType || ''
+        };
+      });
+    } catch {}
+  }
+
   async function loadAll() {
     setLoading(true);
-    await Promise.all([loadStatus(), loadSummary(), loadIndex(), loadSubIndices(), loadGainersLosers(), loadPriceVolume()]);
+    await Promise.all([loadStatus(), loadSummary(), loadIndex(), loadSubIndices(), loadGainersLosers(), loadPriceVolume(), loadCompanyList()]);
     document.getElementById('lastUpdated').textContent =
       'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     setLoading(false);
