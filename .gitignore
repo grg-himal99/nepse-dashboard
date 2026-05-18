@@ -6,3 +6,7 @@ __*
 !.github/
 build/
 nepse.egg-info/
+
+# large local depth data files — keep on disk, not in git
+nepse/nepse_depth-main/files/
+nepse/nepse_depth-main.zip

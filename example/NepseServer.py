@@ -1,3 +1,8 @@
+import glob
+import json
+import os
+import threading
+import time
 from json import JSONDecodeError
 
 import flask
@@ -14,9 +19,56 @@ except ImportError:
 app = Flask(__name__)
 app.config["PROPAGATE_EXCEPTIONS"] = True
 
-
 nepse = Nepse()
 nepse.setTLSVerification(False)
+
+REFRESH_INTERVAL = 5  # seconds
+
+_cache = {}
+_cache_lock = threading.Lock()
+
+
+def _safe_fetch(key, fn):
+    try:
+        data = fn()
+        with _cache_lock:
+            _cache[key] = data
+    except Exception as e:
+        print(f"[auto-refresh] failed to update {key}: {e}")
+
+
+def _refresh_loop():
+    fetchers = {
+        "summary": nepse.getSummary,
+        "nepseIndex": nepse.getNepseIndex,
+        "nepseSubIndices": nepse.getNepseSubIndices,
+        "topGainers": nepse.getTopGainers,
+        "topLosers": nepse.getTopLosers,
+        "topTenTrade": nepse.getTopTenTradeScrips,
+        "topTenTransaction": nepse.getTopTenTransactionScrips,
+        "topTenTurnover": nepse.getTopTenTurnoverScrips,
+        "supplyDemand": nepse.getSupplyDemand,
+        "isNepseOpen": nepse.isNepseOpen,
+        "priceVolume": nepse.getPriceVolume,
+        "liveMarket": nepse.getLiveMarket,
+        "companyList": nepse.getCompanyList,
+        "securityList": nepse.getSecurityList,
+    }
+    while True:
+        print("[auto-refresh] refreshing data...")
+        for key, fn in fetchers.items():
+            _safe_fetch(key, fn)
+        print("[auto-refresh] done.")
+        time.sleep(REFRESH_INTERVAL)
+
+
+def _get(key):
+    with _cache_lock:
+        return _cache.get(key)
+
+
+_refresh_thread = threading.Thread(target=_refresh_loop, daemon=True)
+_refresh_thread.start()
 
 routes = {
     "PriceVolume": "/PriceVolume",
@@ -45,7 +97,7 @@ def getIndex():
     content = "<BR>".join(
         [f"<a href={value}> {key} </a>" for key, value in routes.items()]
     )
-    return f"Serverving hot stock data <BR>{content}"
+    return f"Serving hot stock data <BR>{content}"
 
 
 @app.route(routes["Summary"])
@@ -56,10 +108,8 @@ def getSummary():
 
 
 def _getSummary():
-    response = dict()
-    for obj in nepse.getSummary():
-        response[obj["detail"]] = obj["value"]
-    return response
+    data = _get("summary") or []
+    return {obj["detail"]: obj["value"] for obj in data}
 
 
 @app.route(routes["NepseIndex"])
@@ -70,10 +120,8 @@ def getNepseIndex():
 
 
 def _getNepseIndex():
-    response = dict()
-    for obj in nepse.getNepseIndex():
-        response[obj["index"]] = obj
-    return response
+    data = _get("nepseIndex") or []
+    return {obj["index"]: obj for obj in data}
 
 
 @app.route(routes["NepseSubIndices"])
@@ -84,57 +132,55 @@ def getNepseSubIndices():
 
 
 def _getNepseSubIndices():
-    response = dict()
-    for obj in nepse.getNepseSubIndices():
-        response[obj["index"]] = obj
-    return response
+    data = _get("nepseSubIndices") or []
+    return {obj["index"]: obj for obj in data}
 
 
 @app.route(routes["TopTenTradeScrips"])
 def getTopTenTradeScrips():
-    response = flask.jsonify(nepse.getTopTenTradeScrips())
+    response = flask.jsonify(_get("topTenTrade") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["TopTenTransactionScrips"])
 def getTopTenTransactionScrips():
-    response = flask.jsonify(nepse.getTopTenTransactionScrips())
+    response = flask.jsonify(_get("topTenTransaction") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["TopTenTurnoverScrips"])
 def getTopTenTurnoverScrips():
-    response = flask.jsonify(nepse.getTopTenTurnoverScrips())
+    response = flask.jsonify(_get("topTenTurnover") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["SupplyDemand"])
 def getSupplyDemand():
-    response = flask.jsonify(nepse.getSupplyDemand())
+    response = flask.jsonify(_get("supplyDemand") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["TopGainers"])
 def getTopGainers():
-    response = flask.jsonify(nepse.getTopGainers())
+    response = flask.jsonify(_get("topGainers") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["TopLosers"])
 def getTopLosers():
-    response = flask.jsonify(nepse.getTopLosers())
+    response = flask.jsonify(_get("topLosers") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["IsNepseOpen"])
 def isNepseOpen():
-    response = flask.jsonify(nepse.isNepseOpen())
+    response = flask.jsonify(_get("isNepseOpen") or {})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
@@ -165,28 +211,21 @@ def getDailyScripPriceGraph(symbol):
 
 @app.route(routes["CompanyList"])
 def getCompanyList():
-    response = flask.jsonify(nepse.getCompanyList())
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
-
-
-@app.route(routes["CompanyList"])
-def getSecurityList():
-    response = flask.jsonify(nepse.getSecurityList())
+    response = flask.jsonify(_get("companyList") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["PriceVolume"])
 def getPriceVolume():
-    response = flask.jsonify(nepse.getPriceVolume())
+    response = flask.jsonify(_get("priceVolume") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
 @app.route(routes["LiveMarket"])
 def getLiveMarket():
-    response = flask.jsonify(nepse.getLiveMarket())
+    response = flask.jsonify(_get("liveMarket") or [])
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
@@ -214,15 +253,15 @@ def getMarketDepth(symbol):
 
 @app.route(routes["TradeTurnoverTransactionSubindices"])
 def getTradeTurnoverTransactionSubindices():
-    companies = {company["symbol"]: company for company in nepse.getCompanyList()}
-    turnover = {obj["symbol"]: obj for obj in nepse.getTopTenTurnoverScrips()}
-    transaction = {obj["symbol"]: obj for obj in nepse.getTopTenTransactionScrips()}
-    trade = {obj["symbol"]: obj for obj in nepse.getTopTenTradeScrips()}
+    companies = {company["symbol"]: company for company in (_get("companyList") or [])}
+    turnover = {obj["symbol"]: obj for obj in (_get("topTenTurnover") or [])}
+    transaction = {obj["symbol"]: obj for obj in (_get("topTenTransaction") or [])}
+    trade = {obj["symbol"]: obj for obj in (_get("topTenTrade") or [])}
 
-    gainers = {obj["symbol"]: obj for obj in nepse.getTopGainers()}
-    losers = {obj["symbol"]: obj for obj in nepse.getTopLosers()}
+    gainers = {obj["symbol"]: obj for obj in (_get("topGainers") or [])}
+    losers = {obj["symbol"]: obj for obj in (_get("topLosers") or [])}
 
-    price_vol_info = {obj["symbol"]: obj for obj in nepse.getPriceVolume()}
+    price_vol_info = {obj["symbol"]: obj for obj in (_get("priceVolume") or [])}
 
     sector_sub_indices = _getNepseSubIndices()
     # this is done since nepse sub indices and sector name are different
@@ -311,6 +350,151 @@ def getTradeTurnoverTransactionSubindices():
 
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
+
+
+# ── Market Depth / Order Book endpoints ──────────────────────────────────────
+
+_DEPTH_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "nepse", "nepse_depth-main", "files",
+)
+
+
+def _latest_depth_file():
+    # find latest file that actually has order-book data
+    files = sorted(glob.glob(os.path.join(_DEPTH_DIR, "**", "*.json"), recursive=True), reverse=True)
+    for filepath in files:
+        try:
+            with open(filepath) as f:
+                data = json.load(f)
+            for snap in reversed(data):
+                if any(v.get("totalBuyQty", 0) + v.get("totalSellQty", 0) > 0
+                       for v in snap["data"].values()):
+                    return filepath
+        except Exception:
+            continue
+    return None
+
+
+def _latest_nonempty_snapshot():
+    """Return (filepath, snapshot_dict) for the most recent snapshot with real data."""
+    files = sorted(glob.glob(os.path.join(_DEPTH_DIR, "**", "*.json"), recursive=True), reverse=True)
+    for filepath in files:
+        try:
+            with open(filepath) as f:
+                data = json.load(f)
+            for snap in reversed(data):
+                if any(v.get("totalBuyQty", 0) + v.get("totalSellQty", 0) > 0
+                       for v in snap["data"].values()):
+                    return filepath, snap
+        except Exception:
+            continue
+    return None, None
+
+
+def _imbalance(buy, sell):
+    total = buy + sell
+    return round((buy - sell) / total, 4) if total else 0
+
+
+@app.route("/depth/today")
+def getDepthToday():
+    try:
+        path, snap = _latest_nonempty_snapshot()
+        if not path or not snap:
+            return flask.jsonify([])
+        result = []
+        for symbol, info in snap["data"].items():
+            buy = info.get("totalBuyQty", 0)
+            sell = info.get("totalSellQty", 0)
+            if buy == 0 and sell == 0:
+                continue
+            depth = info.get("marketDepth", {})
+            buy_levels = depth.get("buyMarketDepthList", [])
+            sell_levels = depth.get("sellMarketDepthList", [])
+            best_bid = buy_levels[0]["orderBookOrderPrice"] if buy_levels else None
+            best_ask = sell_levels[0]["orderBookOrderPrice"] if sell_levels else None
+            result.append({
+                "symbol": symbol,
+                "totalBuyQty": buy,
+                "totalSellQty": sell,
+                "imbalance": _imbalance(buy, sell),
+                "bestBid": best_bid,
+                "bestAsk": best_ask,
+                "spread": round(best_ask - best_bid, 2) if (best_bid and best_ask) else None,
+                "timestamp": snap["timestamp"],
+            })
+        result.sort(key=lambda x: abs(x["imbalance"]), reverse=True)
+        resp = flask.jsonify(result)
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+    except Exception as e:
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/depth/orderbook/<symbol>")
+def getOrderBook(symbol):
+    try:
+        path = _latest_depth_file()
+        if not path:
+            return flask.jsonify(None)
+        with open(path) as f:
+            data = json.load(f)
+        for snap in reversed(data):
+            if symbol in snap["data"]:
+                info = snap["data"][symbol]
+                buy = info.get("totalBuyQty", 0)
+                sell = info.get("totalSellQty", 0)
+                depth = info.get("marketDepth", {})
+                resp = flask.jsonify({
+                    "symbol": symbol,
+                    "timestamp": snap["timestamp"],
+                    "totalBuyQty": buy,
+                    "totalSellQty": sell,
+                    "imbalance": _imbalance(buy, sell),
+                    "buyLevels": depth.get("buyMarketDepthList", []),
+                    "sellLevels": depth.get("sellMarketDepthList", []),
+                })
+                resp.headers.add("Access-Control-Allow-Origin", "*")
+                return resp
+        resp = flask.jsonify(None)
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+    except Exception as e:
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/depth/history/<symbol>")
+def getDepthHistory(symbol):
+    try:
+        files = sorted(glob.glob(os.path.join(_DEPTH_DIR, "**", "*.json"), recursive=True))[-30:]
+        result = []
+        for filepath in files:
+            date_str = os.path.basename(filepath).replace(".json", "")
+            try:
+                with open(filepath) as f:
+                    data = json.load(f)
+                for snap in reversed(data):
+                    if symbol in snap["data"]:
+                        info = snap["data"][symbol]
+                        buy = info.get("totalBuyQty", 0)
+                        sell = info.get("totalSellQty", 0)
+                        if buy == 0 and sell == 0:
+                            break
+                        result.append({
+                            "date": date_str,
+                            "totalBuyQty": buy,
+                            "totalSellQty": sell,
+                            "imbalance": _imbalance(buy, sell),
+                        })
+                        break
+            except Exception:
+                continue
+        resp = flask.jsonify(result)
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+    except Exception as e:
+        return flask.jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

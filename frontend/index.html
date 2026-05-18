@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEPSE Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #161b27;
+      --surface2: #1e2535;
+      --border: #2a3347;
+      --accent: #3b82f6;
+      --accent2: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 12px;
+    }
+
+    :root.light {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --surface2: #f8fafc;
+      --border: #e2e8f0;
+      --accent: #2563eb;
+      --accent2: #4f46e5;
+      --green: #16a34a;
+      --red: #dc2626;
+      --yellow: #d97706;
+      --text: #0f172a;
+      --muted: #94a3b8;
+    }
+
+    html { transition: background 0.25s, color 0.25s; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    /* ── Nav Tabs ── */
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .nav-tab {
+      padding: 7px 20px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-tab.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .market-badge {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+
+    .status-dot.open {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    .last-updated { font-size: 12px; color: var(--muted); }
+
+    .icon-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; flex-shrink: 0;
+    }
+
+    .icon-btn:hover { background: var(--border); }
+
+    .refresh-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px; font-weight: 500;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .refresh-btn:hover { background: var(--border); }
+    .refresh-btn.loading { opacity: 0.6; pointer-events: none; }
+
+    /* ── Main ── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── Stat Cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 8px;
+      transition: border-color 0.2s;
+    }
+
+    .stat-card:hover { border-color: var(--accent); }
+
+    .stat-label {
+      font-size: 12px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    }
+
+    .stat-value { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .stat-sub { font-size: 12px; color: var(--muted); }
+
+    /* ── Index Cards ── */
+    .index-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .index-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      position: relative; overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .index-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .index-card::before { content:''; position:absolute; top:0;left:0;right:0; height:3px; }
+    .index-card.green::before { background: linear-gradient(90deg, var(--green), transparent); }
+    .index-card.red::before { background: linear-gradient(90deg, var(--red), transparent); }
+
+    .index-name { font-size:13px; color:var(--muted); font-weight:600; margin-bottom:8px; }
+    .index-value { font-size:28px; font-weight:700; letter-spacing:-1px; margin-bottom:6px; }
+    .index-change { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; }
+    .index-range { font-size:11px; color:var(--muted); margin-top:8px; display:flex; gap:12px; }
+
+    /* ── Layouts ── */
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+
+    @media(max-width:900px) { .two-col,.three-col { grid-template-columns:1fr; } }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .panel-title {
+      font-size: 14px; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .panel-title .dot { width:8px; height:8px; border-radius:50%; }
+    .panel-body { padding: 0; }
+
+    /* ── Table ── */
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    th.right, td.right { text-align: right; }
+    tr:hover td { background: var(--surface2); }
+
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .symbol-badge {
+      display: inline-block;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 2px 8px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+      font-family: monospace;
+    }
+
+    .change-up { color: var(--green); font-weight: 600; }
+    .change-down { color: var(--red); font-weight: 600; }
+    .change-neutral { color: var(--muted); }
+
+    .chart-container { padding: 20px; height: 280px; position: relative; }
+
+    /* ── Search ── */
+    .search-bar {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px;
+    }
+
+    .search-bar input {
+      background: transparent; border: none; outline: none;
+      color: var(--text); font-size: 14px; flex: 1;
+    }
+
+    .search-bar input::placeholder { color: var(--muted); }
+
+    /* ── Skeleton ── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+    }
+
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* ── Tabs ── */
+    .tabs { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:8px; }
+
+    .tab {
+      padding: 6px 14px; border-radius: 6px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; color: var(--muted);
+      transition: all 0.2s; border: none; background: transparent;
+    }
+
+    .tab.active { background: var(--surface2); color: var(--text); }
+
+    /* ── Scrollable table ── */
+    .scrollable-table { max-height: 340px; overflow-y: auto; }
+    .scrollable-table::-webkit-scrollbar { width: 4px; }
+    .scrollable-table::-webkit-scrollbar-track { background: transparent; }
+    .scrollable-table::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center; padding: 24px; color: var(--muted); font-size: 12px;
+      border-top: 1px solid var(--border); margin-top: 24px;
+    }
+
+    .tag {
+      display: inline-block;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 6px; font-size: 11px; font-family: monospace;
+    }
+
+    .error-msg { color: var(--red); font-size: 12px; padding: 8px 16px; }
+    .no-data { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ══════════════════════════════════════════
+       PORTFOLIO STYLES
+    ══════════════════════════════════════════ */
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 60px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--surface);
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+
+    .upload-zone h2 { font-size: 18px; margin: 16px 0 8px; }
+    .upload-zone p { color: var(--muted); font-size: 14px; }
+
+    .upload-icon { font-size: 48px; display: block; }
+
+    .upload-btn-label {
+      display: inline-block;
+      margin-top: 20px;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .upload-btn-label:hover { opacity: 0.9; }
+
+    /* ── Portfolio summary cards ── */
+    .pf-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .pf-stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pf-stat::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .pf-stat.pf-green::after { background: var(--green); }
+    .pf-stat.pf-red::after { background: var(--red); }
+    .pf-stat.pf-blue::after { background: var(--accent); }
+    .pf-stat.pf-yellow::after { background: var(--yellow); }
+
+    .pf-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 8px; }
+    .pf-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+    .pf-stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Plan button in table ── */
+    .plan-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px; font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .plan-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── Change chip ── */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .chip.up { background: rgba(34,197,94,0.15); color: var(--green); }
+    .chip.down { background: rgba(239,68,68,0.15); color: var(--red); }
+    .chip.neutral { background: var(--surface2); color: var(--muted); }
+
+    /* ── Planning Modal ── */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: slideUp 0.25s ease;
+    }
+
+    @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .modal-title { font-size: 16px; font-weight: 700; }
+    .modal-close {
+      background: none; border: none; color: var(--muted);
+      font-size: 20px; cursor: pointer; line-height: 1;
+      padding: 4px 8px; border-radius: 6px; transition: all 0.15s;
+    }
+
+    .modal-close:hover { background: var(--surface2); color: var(--text); }
+
+    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+    .modal-section-title {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .position-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+
+    .pos-item { background: var(--surface2); border-radius: 8px; padding: 12px 14px; }
+    .pos-item-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .pos-item-value { font-size: 16px; font-weight: 700; }
+
+    .calc-section { background: var(--surface2); border-radius: 10px; padding: 16px; }
+
+    .calc-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .calc-row:last-child { margin-bottom: 0; }
+
+    .calc-label { font-size: 13px; font-weight: 600; min-width: 130px; color: var(--muted); }
+
+    .calc-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .calc-input:focus { border-color: var(--accent); }
+
+    .calc-result {
+      font-size: 13px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      line-height: 1.7;
+    }
+
+    .pf-filter-bar {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all 0.2s;
+    }
+
+    .filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .upload-again {
+      font-size: 12px; color: var(--muted);
+      cursor: pointer; text-decoration: underline;
+    }
+
+    .upload-again:hover { color: var(--text); }
+
+    /* ── Order Book / Depth styles ── */
+    .ob-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      font-size: 12px;
+    }
+
+    .ob-side { padding: 4px 0; }
+
+    .ob-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      position: relative;
+      cursor: default;
+    }
+
+    .ob-bar {
+      position: absolute;
+      top: 0; bottom: 0;
+      opacity: 0.12;
+      border-radius: 2px;
+    }
+
+    .ob-buy .ob-bar  { background: var(--green); right: 0; }
+    .ob-sell .ob-bar { background: var(--red);   left: 0; }
+
+    .ob-price { font-weight: 700; font-size: 13px; min-width: 60px; }
+    .ob-qty   { color: var(--muted); }
+    .ob-count { color: var(--muted); font-size: 11px; }
+
+    .ob-buy  { flex-direction: row-reverse; text-align: right; border-right: 1px solid var(--border); }
+    .ob-sell { flex-direction: row; }
+    .ob-buy  .ob-price { color: var(--green); }
+    .ob-sell .ob-price { color: var(--red); }
+
+    .ob-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 14px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ob-spread-row {
+      text-align: center;
+      padding: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .imbalance-bar {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--surface2);
+      overflow: hidden;
+      min-width: 60px;
+    }
+
+    .imbalance-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .depth-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .depth-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .ob-total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      background: var(--bg);
+    }
+
+    /* depth modal wider */
+    .modal.wide { max-width: 700px; }
+
+    .hist-chart-wrap { padding: 16px; height: 180px; position: relative; }
+
+    .sentiment-card {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+
+    .sentiment-card:hover { background: var(--border); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📈</div>
+    NEPSE Dashboard
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showView('market', this)">📊 Market</button>
+    <button class="nav-tab" onclick="showView('portfolio', this)">💼 Portfolio</button>
+  </div>
+
+  <div class="header-right">
+    <div class="market-badge">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Checking...</span>
+    </div>
+    <span class="last-updated" id="lastUpdated"></span>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
+      <span id="refreshIcon">↻</span> Refresh
+    </button>
+  </div>
+</header>
+
+<!-- ══════════════ MARKET VIEW ══════════════ -->
+<main id="marketView">
+
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">Total Turnover</div><div class="stat-value skeleton" style="height:32px;width:140px;">&nbsp;</div></div>
+    <div class="stat-card"><div class="stat-label">Traded Shares</div><div class="stat-value skeleton" style="height:32px;width:120px;">&nbsp;</div></div>
+    <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value skeleton" style="height:32px;width:100px;">&nbsp;</div></div>
+    <div class="stat-card"><div class="stat-label">Scrips Traded</div><div class="stat-value skeleton" style="height:32px;width:80px;">&nbsp;</div></div>
+    <div class="stat-card"><div class="stat-label">Market Cap</div><div class="stat-value skeleton" style="height:32px;width:150px;">&nbsp;</div></div>
+    <div class="stat-card"><div class="stat-label">Float Market Cap</div><div class="stat-value skeleton" style="height:32px;width:150px;">&nbsp;</div></div>
+  </div>
+
+  <div class="index-row" id="indexRow">
+    <div class="index-card"><div class="skeleton" style="height:80px;">&nbsp;</div></div>
+    <div class="index-card"><div class="skeleton" style="height:80px;">&nbsp;</div></div>
+    <div class="index-card"><div class="skeleton" style="height:80px;">&nbsp;</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:var(--accent)"></div>Sector Indices</div>
+      </div>
+      <div class="chart-container"><canvas id="subIndexChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title" id="gl-title">
+          <div class="dot" style="background:var(--green)"></div>Top Gainers
+        </div>
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('gainers',this)">Gainers</button>
+          <button class="tab" onclick="switchTab('losers',this)">Losers</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="scrollable-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th class="right">LTP</th>
+                <th class="right">Change</th>
+                <th class="right">% Change</th>
+              </tr>
+            </thead>
+            <tbody id="glTable"><tr><td colspan="4"><div class="no-data">Loading...</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Book Sentiment -->
+  <div class="two-col" id="sentimentRow" style="display:none">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:var(--green)"></div>Strongest Buy Pressure</div>
+        <span style="font-size:11px;color:var(--muted)" id="depthAsOf"></span>
+      </div>
+      <div class="panel-body" id="bullishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:var(--red)"></div>Strongest Sell Pressure</div>
+      </div>
+      <div class="panel-body" id="bearishList" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title"><div class="dot" style="background:var(--accent2)"></div>All Stocks — Price &amp; Volume</div>
+      <div style="font-size:12px;color:var(--muted)" id="stockCount"></div>
+    </div>
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+      <div class="search-bar">
+        <span style="color:var(--muted)">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search by symbol or company name..." oninput="filterStocks()" />
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="scrollable-table" style="max-height:420px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Company</th>
+              <th class="right">Prev Close</th>
+              <th class="right">LTP</th>
+              <th class="right">% Change</th>
+              <th class="right">Volume</th>
+              <th class="right">Order Flow</th>
+              <th class="right">Depth</th>
+            </tr>
+          </thead>
+          <tbody id="stockTable"><tr><td colspan="8"><div class="no-data">Loading...</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══════════════ PORTFOLIO VIEW ══════════════ -->
+<main id="portfolioView" style="display:none">
+
+  <!-- Upload zone (shown when no portfolio loaded) -->
+  <div id="uploadZone" class="upload-zone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+    <span class="upload-icon">📄</span>
+    <h2>Upload your NEPSE Portfolio PDF</h2>
+    <p>Export from MeroShare / Broker portal → upload here for live analysis</p>
+    <label class="upload-btn-label">
+      Choose PDF
+      <input type="file" accept=".pdf" style="display:none" onchange="onFileSelect(event)" />
+    </label>
+    <p style="margin-top:12px;font-size:12px;color:var(--muted)">or drag &amp; drop the PDF here</p>
+  </div>
+
+  <!-- Portfolio content (shown after upload) -->
+  <div id="pfContent" style="display:none">
+
+    <!-- Header row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:20px;font-weight:700">My Portfolio</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px" id="pfAsOf"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="upload-again" onclick="resetPortfolio()">↑ Upload new PDF</span>
+        <button class="refresh-btn" onclick="refreshPortfolio()">↻ Refresh live prices</button>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="pf-stats" id="pfStats"></div>
+
+    <!-- Charts + Today's movers -->
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--accent2)"></div>Portfolio Allocation</div>
+        </div>
+        <div class="chart-container" style="height:300px"><canvas id="allocChart"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><div class="dot" style="background:var(--yellow)"></div>Today's Movers in Portfolio</div>
+        </div>
+        <div class="scrollable-table" style="max-height:300px">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th class="right">Live LTP</th>
+                <th class="right">Today</th>
+                <th class="right">Your P&amp;L Today</th>
+              </tr>
+            </thead>
+            <tbody id="pfMovers"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Holdings table -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:var(--accent)"></div>Holdings</div>
+        <div class="pf-filter-bar" id="pfFilterBar">
+          <span class="filter-chip active" onclick="pfFilter('all',this)">All</span>
+          <span class="filter-chip" onclick="pfFilter('gain',this)">Gainers</span>
+          <span class="filter-chip" onclick="pfFilter('loss',this)">Losers</span>
+          <span class="filter-chip" onclick="pfFilter('unknown',this)">No Cost Basis</span>
+        </div>
+      </div>
+      <div class="scrollable-table" style="max-height:500px">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th class="right">Qty</th>
+              <th class="right">Avg Buy</th>
+              <th class="right">PDF LTP</th>
+              <th class="right">Live LTP</th>
+              <th class="right">Current Value</th>
+              <th class="right">Overall P&amp;L</th>
+              <th class="right">% P&amp;L</th>
+              <th class="right">Plan</th>
+            </tr>
+          </thead>
+          <tbody id="pfTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ══════════════ DEPTH / ORDER BOOK MODAL ══════════════ -->
+<div class="modal-backdrop" id="depthModal" onclick="closeDepthModal(event)">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div class="modal-title" id="depthModalTitle">Order Book</div>
+      <button class="modal-close" onclick="document.getElementById('depthModal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0;gap:0">
+
+      <!-- Imbalance summary bar -->
+      <div id="depthSummary" style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:20px;flex-wrap:wrap"></div>
+
+      <!-- Order book table -->
+      <div class="ob-header">
+        <span>Count &nbsp; Qty &nbsp; Bid</span>
+        <span>Ask &nbsp; Qty &nbsp; Count</span>
+      </div>
+      <div class="ob-wrap" id="obRows"></div>
+      <div class="ob-total-row" id="obTotals"></div>
+
+      <!-- Historical imbalance chart -->
+      <div style="padding:16px 20px 4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-top:1px solid var(--border)">
+        30-Day Order Flow History
+      </div>
+      <div class="hist-chart-wrap"><canvas id="histChart"></canvas></div>
+      <div style="padding:0 20px 16px;font-size:11px;color:var(--muted)">
+        Imbalance = (Buy − Sell) / (Buy + Sell). Range −1 (all sellers) to +1 (all buyers).
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ PLANNING MODAL ══════════════ -->
+<div class="modal-backdrop" id="planModal" onclick="closePlanModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Plan Trade</div>
+      <button class="modal-close" onclick="closePlanModalBtn()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Current position -->
+      <div>
+        <div class="modal-section-title">Current Position</div>
+        <div class="position-grid" id="modalPosition"></div>
+      </div>
+
+      <!-- Target price calculator -->
+      <div class="calc-section">
+        <div class="modal-section-title">Target Price Calculator</div>
+        <div class="calc-row">
+          <span class="calc-label">Target Price (Rs)</span>
+          <input class="calc-input" type="number" id="targetPrice" placeholder="e.g. 500" oninput="calcTarget()" />
+        </div>
+        <div class="calc-result" id="targetResult" style="display:none"></div>
+      </div>
+
+      <!-- Buy more calculator -->
+      <div class="calc-section">
+        <div class="modal-section-title">Buy More</div>
+        <div class="calc-row">
+          <span class="calc-label">Amount to Invest (Rs)</span>
+          <input class="calc-input" type="number" id="buyAmount" placeholder="e.g. 50000" oninput="calcBuy()" />
+        </div>
+        <div class="calc-result" id="buyResult" style="display:none"></div>
+      </div>
+
+      <!-- Sell calculator -->
+      <div class="calc-section">
+        <div class="modal-section-title">Sell</div>
+        <div class="calc-row">
+          <span class="calc-label">Shares to Sell</span>
+          <input class="calc-input" type="number" id="sellShares" placeholder="e.g. 10" oninput="calcSell()" />
+        </div>
+        <div class="calc-result" id="sellResult" style="display:none"></div>
+      </div>
+
+      <!-- Live order book in planning modal -->
+      <div>
+        <div class="modal-section-title">Live Order Book</div>
+        <div id="planObSummary" style="margin-bottom:8px"></div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div class="ob-header">
+            <span>Count &nbsp; Qty &nbsp; Bid</span>
+            <span>Ask &nbsp; Qty &nbsp; Count</span>
+          </div>
+          <div class="ob-wrap" id="planObRows"></div>
+          <div class="ob-total-row" id="planObTotals"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>
+  Data sourced from <strong>nepalstock.com</strong> via NepseUnofficialApi &nbsp;•&nbsp;
+  Backend: <span class="tag">localhost:8000</span> &nbsp;•&nbsp;
+  Auto-refreshes every 5 seconds
+</footer>
+
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const API = 'http://127.0.0.1:8000';
+
+  // ── State ─────────────────────────────────────────
+  let allStocks = [];
+  let gainersData = [], losersData = [];
+  let currentTab = 'gainers';
+  let subIndexChart = null, allocChart = null;
+
+  let portfolio = [];           // parsed from PDF
+  let liveMap = {};             // symbol → live stock data from /PriceVolume
+  let pfCurrentFilter = 'all';
+  let planStock = null;         // stock currently open in modal
+  let depthMap = {};            // symbol → {imbalance, totalBuyQty, totalSellQty}
+  let histChart = null;
+
+  // ── Helpers ───────────────────────────────────────
+  const fmt = (n, d=2) => n == null ? '—' : Number(n).toLocaleString('en-IN', {minimumFractionDigits:d, maximumFractionDigits:d});
+  const fmtCrore = n => { if(n==null)return'—'; const cr=n/1e7; return cr>=100?`Rs ${fmt(cr/100,2)}T`:`Rs ${fmt(cr,2)}Cr`; };
+  const changeClass = v => v>0?'change-up':v<0?'change-down':'change-neutral';
+  const arrow = v => v>0?'▲':v<0?'▼':'—';
+  const chip = (v, label) => `<span class="chip ${v>0?'up':v<0?'down':'neutral'}">${v>0?'▲':'▼'} ${label}</span>`;
+
+  async function apiFetch(path) {
+    const res = await fetch(`${API}${path}`);
+    if(!res.ok) throw new Error(res.status);
+    return res.json();
+  }
+
+  // ── View switching ────────────────────────────────
+  function showView(view, el) {
+    document.getElementById('marketView').style.display = view==='market' ? '' : 'none';
+    document.getElementById('portfolioView').style.display = view==='portfolio' ? '' : 'none';
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  // ── Theme ─────────────────────────────────────────
+  function toggleTheme() {
+    const isLight = document.documentElement.classList.toggle('light');
+    document.getElementById('themeBtn').textContent = isLight ? '🌕' : '🌙';
+    localStorage.setItem('theme', isLight?'light':'dark');
+    if(subIndexChart) loadSubIndices();
+  }
+
+  if(localStorage.getItem('theme')==='light') {
+    document.documentElement.classList.add('light');
+    document.getElementById('themeBtn').textContent = '🌕';
+  }
+
+  function setLoading(loading) {
+    const btn = document.getElementById('refreshBtn');
+    const icon = document.getElementById('refreshIcon');
+    btn.classList.toggle('loading', loading);
+    icon.textContent = loading ? '⏳' : '↻';
+  }
+
+  // ══════════════════════════════════════════════════
+  //  MARKET DATA
+  // ══════════════════════════════════════════════════
+
+  async function loadStatus() {
+    try {
+      const d = await apiFetch('/IsNepseOpen');
+      const open = d.isOpen==='OPEN';
+      document.getElementById('statusDot').classList.toggle('open', open);
+      document.getElementById('statusText').textContent = `Market ${open?'Open':'Closed'}`;
+    } catch {}
+  }
+
+  async function loadSummary() {
+    try {
+      const d = await apiFetch('/Summary');
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card"><div class="stat-label">Total Turnover</div><div class="stat-value">${fmtCrore(d['Total Turnover Rs:'])}</div><div class="stat-sub">Today</div></div>
+        <div class="stat-card"><div class="stat-label">Traded Shares</div><div class="stat-value">${fmt(d['Total Traded Shares'],0)}</div><div class="stat-sub">Shares</div></div>
+        <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">${fmt(d['Total Transactions'],0)}</div><div class="stat-sub">Trades</div></div>
+        <div class="stat-card"><div class="stat-label">Scrips Traded</div><div class="stat-value">${fmt(d['Total Scrips Traded'],0)}</div><div class="stat-sub">Securities</div></div>
+        <div class="stat-card"><div class="stat-label">Market Cap</div><div class="stat-value">${fmtCrore(d['Total Market Capitalization Rs:'])}</div><div class="stat-sub">Total</div></div>
+        <div class="stat-card"><div class="stat-label">Float Market Cap</div><div class="stat-value">${fmtCrore(d['Total Float Market Capitalization Rs:'])}</div><div class="stat-sub">Float</div></div>
+      `;
+    } catch { document.getElementById('statsGrid').innerHTML=`<div class="error-msg">Failed to load summary</div>`; }
+  }
+
+  async function loadIndex() {
+    try {
+      const d = await apiFetch('/NepseIndex');
+      document.getElementById('indexRow').innerHTML = Object.values(d).map(idx => {
+        const up = idx.change>=0;
+        return `<div class="index-card ${up?'green':'red'}">
+          <div class="index-name">${idx.index}</div>
+          <div class="index-value">${fmt(idx.currentValue)}</div>
+          <div class="index-change ${changeClass(idx.change)}">
+            <span>${arrow(idx.change)} ${fmt(Math.abs(idx.change))}</span>
+            <span style="color:var(--muted);font-weight:400">/</span>
+            <span>${fmt(idx.perChange)}%</span>
+          </div>
+          <div class="index-range">
+            <span>52W H: <strong>${fmt(idx.fiftyTwoWeekHigh)}</strong></span>
+            <span>52W L: <strong>${fmt(idx.fiftyTwoWeekLow)}</strong></span>
+          </div>
+        </div>`;
+      }).join('');
+    } catch { document.getElementById('indexRow').innerHTML=`<div class="error-msg">Failed to load indices</div>`; }
+  }
+
+  async function loadSubIndices() {
+    try {
+      const d = await apiFetch('/NepseSubIndices');
+      const entries = Object.values(d);
+      const labels = entries.map(e => e.index.replace(/ Index/,'').replace(/ SubIndex/,''));
+      const values = entries.map(e => e.perChange);
+      const colors = values.map(v => v>=0?'rgba(34,197,94,0.8)':'rgba(239,68,68,0.8)');
+      const borders = values.map(v => v>=0?'#22c55e':'#ef4444');
+
+      if(subIndexChart) subIndexChart.destroy();
+      subIndexChart = new Chart(document.getElementById('subIndexChart').getContext('2d'), {
+        type:'bar',
+        data:{ labels, datasets:[{label:'% Change', data:values, backgroundColor:colors, borderColor:borders, borderWidth:1, borderRadius:4}] },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.parsed.y>=0?'+':''}${c.parsed.y.toFixed(2)}%`}} },
+          scales:{
+            x:{ ticks:{color:'#64748b',font:{size:10},maxRotation:45}, grid:{color:'#1a2030'} },
+            y:{ ticks:{color:'#64748b',font:{size:11},callback:v=>`${v}%`}, grid:{color:'#1a2030'} }
+          }
+        }
+      });
+    } catch {}
+  }
+
+  async function loadGainersLosers() {
+    try {
+      [gainersData, losersData] = await Promise.all([apiFetch('/TopGainers'), apiFetch('/TopLosers')]);
+      renderGL();
+    } catch {}
+  }
+
+  function renderGL() {
+    const data = currentTab==='gainers' ? gainersData : losersData;
+    const tbody = document.getElementById('glTable');
+    if(!data||!data.length) { tbody.innerHTML=`<tr><td colspan="4"><div class="no-data">No data</div></td></tr>`; return; }
+    tbody.innerHTML = data.map(s=>`
+      <tr>
+        <td><span class="symbol-badge">${s.symbol}</span></td>
+        <td class="right">${fmt(s.ltp)}</td>
+        <td class="right ${changeClass(s.pointChange)}">${arrow(s.pointChange)} ${fmt(Math.abs(s.pointChange))}</td>
+        <td class="right ${changeClass(s.percentageChange)}">${s.percentageChange>=0?'+':''}${fmt(s.percentageChange)}%</td>
+      </tr>`).join('');
+    document.querySelector('#gl-title .dot').style.background = currentTab==='gainers'?'var(--green)':'var(--red)';
+  }
+
+  function switchTab(tab, el) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    renderGL();
+  }
+
+  async function loadPriceVolume() {
+    try {
+      const data = await apiFetch('/PriceVolume');
+      allStocks = data||[];
+      // build live map for portfolio use
+      liveMap = {};
+      allStocks.forEach(s => { liveMap[s.symbol] = s; });
+      document.getElementById('stockCount').textContent = `${allStocks.length} securities`;
+      filterStocks();
+      if(portfolio.length) renderPortfolio();
+    } catch {
+      document.getElementById('stockTable').innerHTML=`<tr><td colspan="6"><div class="no-data">Failed to load</div></td></tr>`;
+    }
+  }
+
+  function filterStocks() {
+    const q = document.getElementById('searchInput').value.toLowerCase().trim();
+    const filtered = q ? allStocks.filter(s=>(s.symbol||'').toLowerCase().includes(q)||(s.securityName||'').toLowerCase().includes(q)) : allStocks;
+    const tbody = document.getElementById('stockTable');
+    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="8"><div class="no-data">No results</div></td></tr>`; return; }
+    tbody.innerHTML = filtered.map(s => {
+      const pct = s.percentageChange??0;
+      const dep = depthMap[s.symbol];
+      const imb = dep ? dep.imbalance : null;
+      const buyPct = dep ? Math.round(((dep.totalBuyQty/(dep.totalBuyQty+dep.totalSellQty))*100)) : null;
+      const obCell = dep
+        ? `<div class="imbalance-bar" title="Buy ${buyPct}% / Sell ${100-buyPct}%">
+             <div class="imbalance-fill" style="width:${buyPct}%;background:${imb>=0?'var(--green)':'var(--red)'}"></div>
+           </div>`
+        : '<span style="color:var(--muted);font-size:11px">—</span>';
+      return `<tr>
+        <td><span class="symbol-badge">${s.symbol||'—'}</span></td>
+        <td style="color:var(--muted);font-size:12px;">${s.securityName||'—'}</td>
+        <td class="right">${fmt(s.previousClose)}</td>
+        <td class="right" style="font-weight:600">${fmt(s.lastTradedPrice)}</td>
+        <td class="right ${changeClass(pct)}">${pct>=0?'+':''}${fmt(pct)}%</td>
+        <td class="right">${fmt(s.totalTradeQuantity,0)}</td>
+        <td class="right">${obCell}</td>
+        <td class="right"><button class="depth-btn" onclick="openDepthModal('${s.symbol}')">📖 Depth</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ══════════════════════════════════════════════════
+  //  MARKET DEPTH / ORDER BOOK
+  // ══════════════════════════════════════════════════
+
+  async function loadDepth() {
+    try {
+      const data = await apiFetch('/depth/today');
+      if(!data || !data.length) return;
+      depthMap = {};
+      data.forEach(d => { depthMap[d.symbol] = d; });
+
+      // Show sentiment panels
+      const row = document.getElementById('sentimentRow');
+      row.style.display = '';
+      const ts = data[0].timestamp ? new Date(data[0].timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      document.getElementById('depthAsOf').textContent = ts ? `as of ${ts}` : '';
+
+      const bullish = data.filter(d=>d.imbalance>0).sort((a,b)=>b.imbalance-a.imbalance).slice(0,8);
+      const bearish = data.filter(d=>d.imbalance<0).sort((a,b)=>a.imbalance-b.imbalance).slice(0,8);
+
+      document.getElementById('bullishList').innerHTML = bullish.map(d => sentimentCard(d, true)).join('');
+      document.getElementById('bearishList').innerHTML = bearish.map(d => sentimentCard(d, false)).join('');
+
+      filterStocks(); // re-render table with order flow column
+    } catch {}
+  }
+
+  function sentimentCard(d, isBuy) {
+    const pct = Math.round(Math.abs(d.imbalance)*100);
+    const color = isBuy ? 'var(--green)' : 'var(--red)';
+    const lv = liveMap[d.symbol];
+    const ltpStr = lv ? `Rs ${fmt(lv.lastTradedPrice)}` : '';
+    return `<div class="sentiment-card" onclick="openDepthModal('${d.symbol}')">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="symbol-badge">${d.symbol}</span>
+        <span style="font-size:12px;color:var(--muted)">${ltpStr}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="imbalance-bar" style="width:80px">
+          <div class="imbalance-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <span style="font-size:12px;font-weight:700;color:${color};min-width:36px;text-align:right">${isBuy?'+':'−'}${pct}%</span>
+      </div>
+    </div>`;
+  }
+
+  function buildOrderBookHTML(buyLevels, sellLevels) {
+    const maxQty = Math.max(
+      ...buyLevels.map(l=>l.quantity),
+      ...sellLevels.map(l=>l.quantity), 1
+    );
+    const rows = Math.max(buyLevels.length, sellLevels.length);
+    let html = '';
+    for(let i=0; i<rows; i++) {
+      const b = buyLevels[i];
+      const s = sellLevels[i];
+      const bPct = b ? Math.round((b.quantity/maxQty)*100) : 0;
+      const sPct = s ? Math.round((s.quantity/maxQty)*100) : 0;
+      html += `
+        <div class="ob-row ob-buy">
+          ${b ? `<div class="ob-bar" style="width:${bPct}%"></div>
+                 <span class="ob-count">${b.orderCount}</span>
+                 <span class="ob-qty">${fmt(b.quantity,0)}</span>
+                 <span class="ob-price">${fmt(b.orderBookOrderPrice)}</span>` : ''}
+        </div>
+        <div class="ob-row ob-sell">
+          ${s ? `<div class="ob-bar" style="width:${sPct}%"></div>
+                 <span class="ob-price">${fmt(s.orderBookOrderPrice)}</span>
+                 <span class="ob-qty">${fmt(s.quantity,0)}</span>
+                 <span class="ob-count">${s.orderCount}</span>` : ''}
+        </div>`;
+    }
+    return html || '<div class="no-data">No order book data</div>';
+  }
+
+  async function openDepthModal(symbol) {
+    document.getElementById('depthModalTitle').textContent = `📖 ${symbol} — Order Book`;
+    document.getElementById('depthModal').classList.add('open');
+    document.getElementById('obRows').innerHTML = '<div class="no-data">Loading...</div>';
+    document.getElementById('depthSummary').innerHTML = '';
+    document.getElementById('obTotals').innerHTML = '';
+
+    try {
+      const [ob, hist] = await Promise.all([
+        apiFetch(`/depth/orderbook/${symbol}`),
+        apiFetch(`/depth/history/${symbol}`)
+      ]);
+
+      if(ob) {
+        const imb = ob.imbalance;
+        const buyPct = ob.totalBuyQty + ob.totalSellQty > 0
+          ? Math.round((ob.totalBuyQty/(ob.totalBuyQty+ob.totalSellQty))*100) : 50;
+        const lv = liveMap[symbol];
+
+        document.getElementById('depthSummary').innerHTML = `
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:3px">LTP</div>
+            <div style="font-size:18px;font-weight:700">${lv?'Rs '+fmt(lv.lastTradedPrice):'—'}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Best Bid</div>
+            <div style="font-size:16px;font-weight:700;color:var(--green)">${ob.bestBid?fmt(ob.bestBid):'—'}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Best Ask</div>
+            <div style="font-size:16px;font-weight:700;color:var(--red)">${ob.bestAsk?fmt(ob.bestAsk):'—'}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Spread</div>
+            <div style="font-size:16px;font-weight:700">${ob.spread!=null?fmt(ob.spread):'—'}</div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Order Flow (Buy vs Sell)</div>
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden">
+              <div style="width:${buyPct}%;background:var(--green)"></div>
+              <div style="flex:1;background:var(--red)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px">
+              <span style="color:var(--green)">Buy ${buyPct}%</span>
+              <span style="color:var(--red)">Sell ${100-buyPct}%</span>
+            </div>
+          </div>`;
+
+        document.getElementById('obRows').innerHTML =
+          buildOrderBookHTML(ob.buyLevels||[], ob.sellLevels||[]);
+
+        document.getElementById('obTotals').innerHTML = `
+          <span style="color:var(--green)">Total Buy: <strong>${fmt(ob.totalBuyQty,0)}</strong></span>
+          <span style="font-size:11px;color:var(--muted)">${new Date(ob.timestamp).toLocaleString()}</span>
+          <span style="color:var(--red)">Total Sell: <strong>${fmt(ob.totalSellQty,0)}</strong></span>`;
+      } else {
+        document.getElementById('obRows').innerHTML = '<div class="no-data">No order book data available</div>';
+      }
+
+      // Historical imbalance chart
+      if(hist && hist.length) {
+        if(histChart) histChart.destroy();
+        const labels = hist.map(h=>h.date.slice(5));
+        const values = hist.map(h=>h.imbalance);
+        const colors = values.map(v=>v>=0?'rgba(34,197,94,0.8)':'rgba(239,68,68,0.8)');
+        histChart = new Chart(document.getElementById('histChart').getContext('2d'), {
+          type:'bar',
+          data:{ labels, datasets:[{
+            label:'Imbalance', data:values,
+            backgroundColor:colors, borderRadius:3, borderSkipped:false
+          }]},
+          options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.parsed.y>=0?'+':''}${(c.parsed.y*100).toFixed(1)}%`}} },
+            scales:{
+              x:{ ticks:{color:'#64748b',font:{size:9}}, grid:{display:false} },
+              y:{ min:-1, max:1, ticks:{color:'#64748b',font:{size:10},callback:v=>`${(v*100).toFixed(0)}%`}, grid:{color:'#1a2030'} }
+            }
+          }
+        });
+      }
+    } catch(e) {
+      document.getElementById('obRows').innerHTML = `<div class="no-data" style="color:var(--red)">Error: ${e.message}</div>`;
+    }
+  }
+
+  function closeDepthModal(e) {
+    if(e.target===document.getElementById('depthModal')) {
+      document.getElementById('depthModal').classList.remove('open');
+      if(histChart) { histChart.destroy(); histChart=null; }
+    }
+  }
+
+  async function loadAll() {
+    setLoading(true);
+    await Promise.all([loadStatus(), loadSummary(), loadIndex(), loadSubIndices(), loadGainersLosers(), loadPriceVolume()]);
+    document.getElementById('lastUpdated').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    setLoading(false);
+    loadDepth(); // non-blocking, depth data loads separately
+  }
+
+  loadAll();
+  setInterval(loadAll, 60000);
+
+  // ══════════════════════════════════════════════════
+  //  PORTFOLIO — PDF PARSING
+  // ══════════════════════════════════════════════════
+
+  function onDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag-over'); }
+  function onDragLeave(e) { document.getElementById('uploadZone').classList.remove('drag-over'); }
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('uploadZone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if(file&&file.type==='application/pdf') parsePDF(file);
+  }
+  function onFileSelect(e) { const f=e.target.files[0]; if(f) parsePDF(f); }
+
+  async function parsePDF(file) {
+    document.getElementById('uploadZone').innerHTML = `<span class="upload-icon">⏳</span><h2>Parsing PDF...</h2><p>Please wait</p>`;
+    try {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+      let fullText = '';
+      for(let i=1;i<=pdf.numPages;i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        // group text items by y-position to reconstruct rows
+        const items = content.items;
+        const byY = {};
+        items.forEach(item => {
+          const y = Math.round(item.transform[5]);
+          if(!byY[y]) byY[y] = [];
+          byY[y].push(item.str);
+        });
+        Object.keys(byY).sort((a,b)=>b-a).forEach(y => {
+          fullText += byY[y].join(' ') + '\n';
+        });
+      }
+      portfolio = extractHoldings(fullText);
+      if(!portfolio.length) throw new Error('No holdings found');
+      document.getElementById('pfAsOf').textContent = `Uploaded: ${file.name} — ${new Date().toLocaleString()}`;
+      document.getElementById('uploadZone').style.display = 'none';
+      document.getElementById('pfContent').style.display = '';
+      renderPortfolio();
+    } catch(err) {
+      document.getElementById('uploadZone').innerHTML = `
+        <span class="upload-icon">❌</span>
+        <h2>Could not parse PDF</h2>
+        <p style="color:var(--red)">${err.message}</p>
+        <label class="upload-btn-label" style="margin-top:16px">Try another file<input type="file" accept=".pdf" style="display:none" onchange="onFileSelect(event)"/></label>`;
+    }
+  }
+
+  function extractHoldings(text) {
+    const holdings = [];
+    const seen = new Set();
+
+    // Match: SYMBOL  QTY  QTY  LTP  VALUE  GAIN_OR_VALUE  PCT_OR_DASH  BS
+    const re = /\b([A-Z][A-Z0-9]{1,14})\s+(\d+)\s+(\d+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)\s+(-?[\d.]+%|-)\s+BS\b/g;
+    let m;
+    while((m=re.exec(text))!==null) {
+      const sym = m[1];
+      // skip header keywords
+      if(['SECURITY','QTY','TOTAL','FREE','LTP','VALUE','UNREALIZED','ACTION'].includes(sym)) continue;
+      if(seen.has(sym)) continue;
+      seen.add(sym);
+
+      const qty       = parseInt(m[2]);
+      const ltp       = parseFloat(m[4]);
+      const value     = parseFloat(m[5].replace(/,/g,''));
+      const pctStr    = m[7];
+      const gainStr   = m[6].replace(/,/g,'');
+
+      const hasGain   = pctStr !== '-';
+      const gain      = hasGain ? parseFloat(gainStr) : null;
+      const pct       = hasGain ? parseFloat(pctStr)  : null;
+      const cost      = hasGain ? value - gain         : null;
+      const avgBuy    = (cost!=null && qty>0) ? cost/qty : null;
+
+      holdings.push({ symbol:sym, qty, ltp, value, gain, pct, cost, avgBuy });
+    }
+    return holdings;
+  }
+
+  function resetPortfolio() {
+    portfolio = [];
+    document.getElementById('pfContent').style.display = 'none';
+    document.getElementById('uploadZone').style.display = '';
+    document.getElementById('uploadZone').innerHTML = `
+      <span class="upload-icon">📄</span>
+      <h2>Upload your NEPSE Portfolio PDF</h2>
+      <p>Export from MeroShare / Broker portal → upload here for live analysis</p>
+      <label class="upload-btn-label">Choose PDF<input type="file" accept=".pdf" style="display:none" onchange="onFileSelect(event)"/></label>
+      <p style="margin-top:12px;font-size:12px;color:var(--muted)">or drag &amp; drop the PDF here</p>`;
+  }
+
+  async function refreshPortfolio() {
+    await loadPriceVolume();
+    renderPortfolio();
+  }
+
+  // ══════════════════════════════════════════════════
+  //  PORTFOLIO — RENDERING
+  // ══════════════════════════════════════════════════
+
+  function renderPortfolio() {
+    if(!portfolio.length) return;
+
+    // Enrich with live data
+    const enriched = portfolio.map(h => {
+      const live = liveMap[h.symbol];
+      const liveLtp    = live ? live.lastTradedPrice : null;
+      const liveValue  = liveLtp ? liveLtp * h.qty    : h.value;
+      const todayChg   = (live && liveLtp) ? live.percentageChange : null;
+      const todayPnl   = (live && liveLtp) ? (liveLtp - (live.previousClose||liveLtp)) * h.qty : null;
+      // Overall P&L based on live price vs cost
+      const liveGain   = h.cost!=null && liveLtp ? liveValue - h.cost : h.gain;
+      const livePct    = h.cost!=null && liveLtp ? (liveGain/h.cost)*100 : h.pct;
+      return {...h, liveLtp, liveValue, todayChg, todayPnl, liveGain, livePct};
+    });
+
+    renderPfStats(enriched);
+    renderAllocChart(enriched);
+    renderMovers(enriched);
+    renderPfTable(enriched);
+  }
+
+  function renderPfStats(data) {
+    const totalValue    = data.reduce((s,h)=>s+h.liveValue, 0);
+    const totalCost     = data.reduce((s,h)=>s+(h.cost||0), 0);
+    const totalGain     = data.reduce((s,h)=>s+(h.liveGain||0), 0);
+    const knownCount    = data.filter(h=>h.cost!=null).length;
+    const overallPct    = totalCost>0 ? (totalGain/totalCost)*100 : null;
+    const winners       = data.filter(h=>h.liveGain>0).length;
+    const losers        = data.filter(h=>h.liveGain<0).length;
+
+    document.getElementById('pfStats').innerHTML = `
+      <div class="pf-stat pf-blue">
+        <div class="pf-stat-label">Current Value</div>
+        <div class="pf-stat-value">Rs ${fmt(totalValue,0)}</div>
+        <div class="pf-stat-sub">${data.length} holdings</div>
+      </div>
+      <div class="pf-stat pf-yellow">
+        <div class="pf-stat-label">Invested (known)</div>
+        <div class="pf-stat-value">Rs ${fmt(totalCost,0)}</div>
+        <div class="pf-stat-sub">${knownCount} of ${data.length} with cost basis</div>
+      </div>
+      <div class="pf-stat ${totalGain>=0?'pf-green':'pf-red'}">
+        <div class="pf-stat-label">Overall P&amp;L</div>
+        <div class="pf-stat-value ${totalGain>=0?'change-up':'change-down'}">${totalGain>=0?'+':''}Rs ${fmt(totalGain,0)}</div>
+        <div class="pf-stat-sub">${overallPct!=null?`${overallPct>=0?'+':''}${fmt(overallPct)}%`:'—'}</div>
+      </div>
+      <div class="pf-stat pf-green">
+        <div class="pf-stat-label">Winners / Losers</div>
+        <div class="pf-stat-value"><span class="change-up">${winners}</span> / <span class="change-down">${losers}</span></div>
+        <div class="pf-stat-sub">${data.length - winners - losers} neutral / unknown</div>
+      </div>
+    `;
+  }
+
+  function renderAllocChart(data) {
+    // Top 10 by value, rest grouped
+    const sorted = [...data].sort((a,b)=>b.liveValue-a.liveValue);
+    const top = sorted.slice(0,10);
+    const othersVal = sorted.slice(10).reduce((s,h)=>s+h.liveValue,0);
+    const labels = top.map(h=>h.symbol);
+    const values = top.map(h=>h.liveValue);
+    if(othersVal>0) { labels.push('Others'); values.push(othersVal); }
+
+    const palette = ['#3b82f6','#6366f1','#22c55e','#f59e0b','#ef4444',
+                     '#8b5cf6','#14b8a6','#f97316','#ec4899','#64748b','#94a3b8'];
+
+    if(allocChart) allocChart.destroy();
+    allocChart = new Chart(document.getElementById('allocChart').getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets:[{
+          data: values,
+          backgroundColor: palette,
+          borderColor: 'var(--surface)',
+          borderWidth: 2,
+          hoverOffset: 8,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{ position:'right', labels:{color:'#94a3b8', font:{size:11}, boxWidth:12, padding:8} },
+          tooltip:{
+            callbacks:{
+              label: c => {
+                const total = c.dataset.data.reduce((s,v)=>s+v,0);
+                const pct = ((c.raw/total)*100).toFixed(1);
+                return ` Rs ${fmt(c.raw,0)} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function renderMovers(data) {
+    const withLive = data.filter(h=>h.todayChg!=null).sort((a,b)=>Math.abs(b.todayChg)-Math.abs(a.todayChg));
+    const tbody = document.getElementById('pfMovers');
+    if(!withLive.length) { tbody.innerHTML=`<tr><td colspan="4"><div class="no-data">Live data unavailable</div></td></tr>`; return; }
+    tbody.innerHTML = withLive.slice(0,15).map(h=>`
+      <tr>
+        <td><span class="symbol-badge">${h.symbol}</span></td>
+        <td class="right" style="font-weight:600">${fmt(h.liveLtp)}</td>
+        <td class="right">${chip(h.todayChg, `${fmt(Math.abs(h.todayChg))}%`)}</td>
+        <td class="right ${changeClass(h.todayPnl)}">${h.todayPnl>=0?'+':''}Rs ${fmt(Math.abs(h.todayPnl),0)}</td>
+      </tr>`).join('');
+  }
+
+  function renderPfTable(data) {
+    let filtered = data;
+    if(pfCurrentFilter==='gain') filtered = data.filter(h=>h.liveGain!=null && h.liveGain>0);
+    else if(pfCurrentFilter==='loss') filtered = data.filter(h=>h.liveGain!=null && h.liveGain<0);
+    else if(pfCurrentFilter==='unknown') filtered = data.filter(h=>h.cost==null);
+
+    const tbody = document.getElementById('pfTable');
+    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="9"><div class="no-data">No holdings match filter</div></td></tr>`; return; }
+
+    tbody.innerHTML = filtered.map(h=>{
+      const pnlCls = h.liveGain==null?'change-neutral':h.liveGain>=0?'change-up':'change-down';
+      const liveDiff = h.liveLtp && h.ltp ? h.liveLtp-h.ltp : null;
+      const liveLtpCell = h.liveLtp
+        ? `${fmt(h.liveLtp)} ${liveDiff!=null?`<small class="${changeClass(liveDiff)}">(${liveDiff>=0?'+':''}${fmt(liveDiff)})</small>`:''}`
+        : '<span style="color:var(--muted)">—</span>';
+
+      return `<tr>
+        <td><span class="symbol-badge">${h.symbol}</span></td>
+        <td class="right">${h.qty}</td>
+        <td class="right">${h.avgBuy!=null?fmt(h.avgBuy):'<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right">${fmt(h.ltp)}</td>
+        <td class="right">${liveLtpCell}</td>
+        <td class="right" style="font-weight:600">Rs ${fmt(h.liveValue,0)}</td>
+        <td class="right ${pnlCls}">${h.liveGain!=null?(h.liveGain>=0?'+':'')+'Rs '+fmt(Math.abs(h.liveGain),0):'<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right">${h.livePct!=null?`<span class="${pnlCls}">${h.livePct>=0?'+':''}${fmt(h.livePct)}%</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right"><button class="plan-btn" onclick="openPlanModal('${h.symbol}')">Plan</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function pfFilter(type, el) {
+    pfCurrentFilter = type;
+    document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+    el.classList.add('active');
+    const enriched = portfolio.map(h=>{
+      const live=liveMap[h.symbol];
+      const liveLtp=live?live.lastTradedPrice:null;
+      const liveValue=liveLtp?liveLtp*h.qty:h.value;
+      const todayChg=(live&&liveLtp)?live.percentageChange:null;
+      const todayPnl=(live&&liveLtp)?(liveLtp-(live.previousClose||liveLtp))*h.qty:null;
+      const liveGain=h.cost!=null&&liveLtp?liveValue-h.cost:h.gain;
+      const livePct=h.cost!=null&&liveLtp?(liveGain/h.cost)*100:h.pct;
+      return {...h,liveLtp,liveValue,todayChg,todayPnl,liveGain,livePct};
+    });
+    renderPfTable(enriched);
+  }
+
+  // ══════════════════════════════════════════════════
+  //  PLANNING MODAL
+  // ══════════════════════════════════════════════════
+
+  function openPlanModal(symbol) {
+    const h = portfolio.find(p=>p.symbol===symbol);
+    if(!h) return;
+    const live = liveMap[symbol];
+    const liveLtp = live ? live.lastTradedPrice : h.ltp;
+    const liveValue = liveLtp * h.qty;
+    const liveGain = h.cost!=null ? liveValue - h.cost : h.gain;
+    const livePct  = h.cost!=null ? (liveGain/h.cost)*100 : h.pct;
+
+    planStock = { ...h, liveLtp, liveValue, liveGain, livePct };
+
+    document.getElementById('modalTitle').textContent = `📊 ${symbol} — Trade Planner`;
+
+    document.getElementById('modalPosition').innerHTML = `
+      <div class="pos-item"><div class="pos-item-label">Shares Held</div><div class="pos-item-value">${h.qty}</div></div>
+      <div class="pos-item"><div class="pos-item-label">Avg Buy Price</div><div class="pos-item-value">${h.avgBuy!=null?'Rs '+fmt(h.avgBuy):'Unknown'}</div></div>
+      <div class="pos-item"><div class="pos-item-label">Live LTP</div><div class="pos-item-value">Rs ${fmt(liveLtp)}</div></div>
+      <div class="pos-item"><div class="pos-item-label">Current Value</div><div class="pos-item-value">Rs ${fmt(liveValue,0)}</div></div>
+      <div class="pos-item"><div class="pos-item-label">Overall P&amp;L</div>
+        <div class="pos-item-value ${liveGain!=null?(liveGain>=0?'change-up':'change-down'):''}">
+          ${liveGain!=null?(liveGain>=0?'+':'')+'Rs '+fmt(Math.abs(liveGain),0):'—'}
+        </div>
+      </div>
+      <div class="pos-item"><div class="pos-item-label">% P&amp;L</div>
+        <div class="pos-item-value ${livePct!=null?(livePct>=0?'change-up':'change-down'):''}">
+          ${livePct!=null?(livePct>=0?'+':'')+fmt(livePct)+'%':'—'}
+        </div>
+      </div>
+    `;
+
+    // clear inputs
+    ['targetPrice','buyAmount','sellShares'].forEach(id=>document.getElementById(id).value='');
+    ['targetResult','buyResult','sellResult'].forEach(id=>document.getElementById(id).style.display='none');
+
+    // reset order book
+    document.getElementById('planObRows').innerHTML = '<div class="no-data" style="padding:12px">Loading order book...</div>';
+    document.getElementById('planObTotals').innerHTML = '';
+    document.getElementById('planObSummary').innerHTML = '';
+
+    document.getElementById('planModal').classList.add('open');
+
+    // load order book async
+    apiFetch(`/depth/orderbook/${symbol}`).then(ob => {
+      if(!ob) { document.getElementById('planObRows').innerHTML='<div class="no-data" style="padding:12px">No order book data</div>'; return; }
+      const buyPct = ob.totalBuyQty+ob.totalSellQty>0 ? Math.round((ob.totalBuyQty/(ob.totalBuyQty+ob.totalSellQty))*100) : 50;
+      document.getElementById('planObSummary').innerHTML = `
+        <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px">
+          <div style="width:${buyPct}%;background:var(--green)"></div>
+          <div style="flex:1;background:var(--red)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+          <span style="color:var(--green)">▲ Buy ${buyPct}% (${fmt(ob.totalBuyQty,0)} units)</span>
+          <span style="color:var(--red)">▼ Sell ${100-buyPct}% (${fmt(ob.totalSellQty,0)} units)</span>
+        </div>`;
+      document.getElementById('planObRows').innerHTML = buildOrderBookHTML(ob.buyLevels||[], ob.sellLevels||[]);
+      document.getElementById('planObTotals').innerHTML = `
+        <span style="color:var(--green)">Bid: <strong>${ob.bestBid?fmt(ob.bestBid):'—'}</strong></span>
+        <span style="font-size:11px;color:var(--muted)">Spread: ${ob.spread!=null?fmt(ob.spread):'—'}</span>
+        <span style="color:var(--red)">Ask: <strong>${ob.bestAsk?fmt(ob.bestAsk):'—'}</strong></span>`;
+    }).catch(()=>{ document.getElementById('planObRows').innerHTML='<div class="no-data" style="padding:12px">Error loading order book</div>'; });
+  }
+
+  function closePlanModal(e) { if(e.target===document.getElementById('planModal')) closePlanModalBtn(); }
+  function closePlanModalBtn() { document.getElementById('planModal').classList.remove('open'); planStock=null; }
+
+  function calcTarget() {
+    if(!planStock) return;
+    const target = parseFloat(document.getElementById('targetPrice').value);
+    const el = document.getElementById('targetResult');
+    if(isNaN(target)||target<=0) { el.style.display='none'; return; }
+
+    const projValue = target * planStock.qty;
+    const projGain  = planStock.cost!=null ? projValue - planStock.cost : null;
+    const projPct   = projGain!=null && planStock.cost>0 ? (projGain/planStock.cost)*100 : null;
+    const vsNow     = projValue - planStock.liveValue;
+    const cls       = vsNow>=0 ? 'change-up' : 'change-down';
+
+    el.style.display = '';
+    el.innerHTML = `
+      <strong>At Rs ${fmt(target)}:</strong><br>
+      Portfolio Value: <strong>Rs ${fmt(projValue,0)}</strong><br>
+      vs Now: <span class="${cls}">${vsNow>=0?'+':''}Rs ${fmt(vsNow,0)}</span><br>
+      ${projGain!=null?`Overall P&L: <span class="${projGain>=0?'change-up':'change-down'}">${projGain>=0?'+':''}Rs ${fmt(Math.abs(projGain),0)} (${projPct>=0?'+':''}${fmt(projPct)}%)</span>`:''}
+    `;
+  }
+
+  function calcBuy() {
+    if(!planStock) return;
+    const amount = parseFloat(document.getElementById('buyAmount').value);
+    const el = document.getElementById('buyResult');
+    if(isNaN(amount)||amount<=0) { el.style.display='none'; return; }
+
+    const ltp = planStock.liveLtp;
+    const canBuy = Math.floor(amount / ltp);
+    const actualCost = canBuy * ltp;
+    const newQty = planStock.qty + canBuy;
+    const newCost = planStock.cost!=null ? planStock.cost + actualCost : null;
+    const newAvg  = newCost!=null ? newCost/newQty : null;
+
+    el.style.display = '';
+    el.innerHTML = `
+      At current LTP of Rs ${fmt(ltp)}:<br>
+      <strong>You can buy ${canBuy} shares</strong> for Rs ${fmt(actualCost,0)}<br>
+      New total: <strong>${newQty} shares</strong><br>
+      ${newAvg!=null?`New avg buy price: <strong>Rs ${fmt(newAvg)}</strong>`:''}
+    `;
+  }
+
+  function calcSell() {
+    if(!planStock) return;
+    const shares = parseInt(document.getElementById('sellShares').value);
+    const el = document.getElementById('sellResult');
+    if(isNaN(shares)||shares<=0) { el.style.display='none'; return; }
+
+    const ltp = planStock.liveLtp;
+    const proceeds = shares * ltp;
+    const remaining = planStock.qty - shares;
+    const costOfSold = planStock.avgBuy!=null ? shares * planStock.avgBuy : null;
+    const realizedPnl = costOfSold!=null ? proceeds - costOfSold : null;
+    const valid = shares <= planStock.qty;
+
+    el.style.display = '';
+    if(!valid) { el.innerHTML=`<span class="change-down">You only hold ${planStock.qty} shares.</span>`; return; }
+
+    el.innerHTML = `
+      Selling ${shares} shares @ Rs ${fmt(ltp)}:<br>
+      <strong>Proceeds: Rs ${fmt(proceeds,0)}</strong><br>
+      Remaining: <strong>${remaining} shares</strong><br>
+      ${realizedPnl!=null?`Realized P&L: <span class="${realizedPnl>=0?'change-up':'change-down'}">${realizedPnl>=0?'+':''}Rs ${fmt(Math.abs(realizedPnl),0)}</span>`:''}<br>
+      <small style="color:var(--muted)">Note: Broker commission &amp; SEBON fee not included.</small>
+    `;
+  }
+</script>
+</body>
+</html>
