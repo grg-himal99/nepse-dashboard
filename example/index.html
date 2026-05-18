@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NEPSE Live Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    header h1 { font-size: 1.6rem; color: #f8fafc; }
+    #status-badge { padding: 4px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .open  { background: #16a34a; color: #fff; }
+    .close { background: #dc2626; color: #fff; }
+
+    #last-updated { font-size: 0.75rem; color: #64748b; margin-top: 4px; text-align: right; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; }
+    .card h2 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+
+    .index-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+    .index-row:last-child { border-bottom: none; }
+    .index-name { font-size: 0.9rem; color: #cbd5e1; }
+    .index-val { font-size: 1rem; font-weight: 700; }
+    .index-change { font-size: 0.8rem; margin-left: 8px; }
+
+    .summary-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #334155; font-size: 0.88rem; }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-val { font-weight: 600; color: #f8fafc; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; color: #64748b; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #334155; }
+    td { padding: 7px 8px; border-bottom: 1px solid #1e293b; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #243044; }
+
+    .up   { color: #22c55e; }
+    .down { color: #ef4444; }
+
+    .ticker-wrap { overflow: hidden; background: #1e293b; border-radius: 8px; padding: 10px 0; margin-bottom: 24px; }
+    #ticker { display: flex; gap: 32px; white-space: nowrap; animation: scroll 30s linear infinite; width: max-content; }
+    .ticker-item { font-size: 0.82rem; }
+    @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+    #countdown { font-size: 0.72rem; color: #475569; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>NEPSE Live Dashboard</h1>
+    <div id="last-updated">Loading...</div>
+  </div>
+  <div style="text-align:right">
+    <span id="status-badge" class="close">CLOSED</span>
+    <div id="countdown"></div>
+  </div>
+</header>
+
+<div class="ticker-wrap"><div id="ticker">—</div></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Indices</h2>
+    <div id="indices">Loading...</div>
+  </div>
+  <div class="card">
+    <h2>Market Summary</h2>
+    <div id="summary">Loading...</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Top Gainers</h2>
+    <table><thead><tr><th>Symbol</th><th>LTP</th><th>Change</th><th>%</th></tr></thead>
+    <tbody id="gainers"></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Top Losers</h2>
+    <table><thead><tr><th>Symbol</th><th>LTP</th><th>Change</th><th>%</th></tr></thead>
+    <tbody id="losers"></tbody></table>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card" style="grid-column: 1 / -1">
+    <h2>Top Turnover Scrips</h2>
+    <table><thead><tr><th>Symbol</th><th>LTP</th><th>Turnover</th><th>Shares</th><th>Trades</th></tr></thead>
+    <tbody id="turnover"></tbody></table>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:8000';
+  const INTERVAL = 5000;
+  let countdown = INTERVAL / 1000;
+
+  function fmt(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return n?.toFixed ? n.toFixed(2) : n;
+  }
+
+  function changeClass(v) { return v > 0 ? 'up' : v < 0 ? 'down' : ''; }
+  function changeSign(v) { return v > 0 ? '+' : ''; }
+
+  async function fetchJSON(path) {
+    const r = await fetch(BASE + path);
+    return r.json();
+  }
+
+  async function loadStatus() {
+    const d = await fetchJSON('/IsNepseOpen');
+    const badge = document.getElementById('status-badge');
+    const open = d.isOpen === 'OPEN';
+    badge.textContent = open ? 'OPEN' : 'CLOSED';
+    badge.className = open ? 'open' : 'close';
+  }
+
+  async function loadIndices() {
+    const d = await fetchJSON('/NepseIndex');
+    document.getElementById('indices').innerHTML = Object.values(d).map(i => `
+      <div class="index-row">
+        <span class="index-name">${i.index}</span>
+        <span>
+          <span class="index-val">${i.currentValue?.toFixed(2)}</span>
+          <span class="index-change ${changeClass(i.perChange)}">${changeSign(i.perChange)}${i.perChange?.toFixed(2)}%</span>
+        </span>
+      </div>`).join('');
+  }
+
+  async function loadSummary() {
+    const d = await fetchJSON('/Summary');
+    document.getElementById('summary').innerHTML = Object.entries(d).map(([k, v]) => `
+      <div class="summary-row">
+        <span>${k}</span>
+        <span class="summary-val">${fmt(v)}</span>
+      </div>`).join('');
+  }
+
+  async function loadGainers() {
+    const d = await fetchJSON('/TopGainers');
+    document.getElementById('gainers').innerHTML = d.slice(0,10).map(s => `
+      <tr>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${s.ltp}</td>
+        <td class="up">${changeSign(s.pointChange)}${s.pointChange}</td>
+        <td class="up">${changeSign(s.percentageChange)}${s.percentageChange?.toFixed(2)}%</td>
+      </tr>`).join('');
+  }
+
+  async function loadLosers() {
+    const d = await fetchJSON('/TopLosers');
+    document.getElementById('losers').innerHTML = d.slice(0,10).map(s => `
+      <tr>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${s.ltp}</td>
+        <td class="down">${s.pointChange}</td>
+        <td class="down">${s.percentageChange?.toFixed(2)}%</td>
+      </tr>`).join('');
+  }
+
+  async function loadTurnover() {
+    const d = await fetchJSON('/TopTenTurnoverScrips');
+    document.getElementById('turnover').innerHTML = d.map(s => `
+      <tr>
+        <td><strong>${s.symbol}</strong></td>
+        <td>${s.ltp ?? s.lastTradedPrice ?? '—'}</td>
+        <td>${fmt(s.turnover)}</td>
+        <td>${fmt(s.shareTraded)}</td>
+        <td>${fmt(s.totalTrades)}</td>
+      </tr>`).join('');
+  }
+
+  async function loadTicker() {
+    const [g, l] = await Promise.all([fetchJSON('/TopGainers'), fetchJSON('/TopLosers')]);
+    const items = [...g, ...l].map(s => {
+      const cls = s.percentageChange > 0 ? 'up' : 'down';
+      const sign = s.percentageChange > 0 ? '+' : '';
+      return `<span class="ticker-item"><strong>${s.symbol}</strong> <span class="${cls}">${s.ltp} (${sign}${s.percentageChange?.toFixed(2)}%)</span></span>`;
+    }).join('');
+    // duplicate for seamless loop
+    document.getElementById('ticker').innerHTML = items + items;
+  }
+
+  async function refresh() {
+    await Promise.all([
+      loadStatus(), loadIndices(), loadSummary(),
+      loadGainers(), loadLosers(), loadTurnover(), loadTicker()
+    ]);
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString();
+    countdown = INTERVAL / 1000;
+  }
+
+  // countdown timer display
+  setInterval(() => {
+    countdown--;
+    document.getElementById('countdown').textContent = `Refreshing in ${countdown}s`;
+    if (countdown <= 0) countdown = INTERVAL / 1000;
+  }, 1000);
+
+  refresh();
+  setInterval(refresh, INTERVAL);
+</script>
+</body>
+</html>
