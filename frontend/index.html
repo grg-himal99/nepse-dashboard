@@ -89,7 +89,7 @@
     }
 
     .nav-tab {
-      padding: 7px 20px;
+      padding: 8px 22px;
       border-radius: 7px;
       font-size: 13px;
       font-weight: 600;
@@ -101,11 +101,30 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      position: relative;
+    }
+    .nav-tab:hover:not(.active) {
+      color: var(--text);
+      background: var(--border);
     }
 
     .nav-tab.active {
       background: var(--accent);
       color: #fff;
+      box-shadow: 0 2px 12px rgba(59,130,246,0.45);
+      font-weight: 700;
+    }
+    .nav-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 24px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--accent);
+      opacity: 0.7;
     }
 
     .market-badge {
@@ -561,6 +580,23 @@
 
     .upload-again:hover { color: var(--text); }
 
+    /* ── Sector heatmap ── */
+    .heat-tile {
+      border-radius: 10px;
+      padding: 10px 14px;
+      min-width: 120px;
+      flex: 1;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .heat-tile:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+    .heat-tile .ht-name  { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .heat-tile .ht-pct   { font-size: 18px; font-weight: 800; color: #fff; }
+    .heat-tile .ht-count { font-size: 10px; color: rgba(255,255,255,.6); }
+
     /* ── Chart toggle buttons ── */
     .chart-toggle {
       padding: 5px 12px;
@@ -828,6 +864,15 @@
     </div>
   </div>
 
+  <!-- Sector Rotation Heatmap -->
+  <div class="panel" id="sectorHeatmapPanel" style="display:none">
+    <div class="panel-header">
+      <div class="panel-title"><div class="dot" style="background:var(--accent2)"></div>Sector Rotation</div>
+      <span style="font-size:12px;color:var(--muted)">Avg % change per sector today</span>
+    </div>
+    <div id="sectorHeatmap" style="padding:16px 20px;display:flex;flex-wrap:wrap;gap:10px"></div>
+  </div>
+
   <div class="index-row" id="indexRow">
     <div class="index-card"><div class="skeleton" style="height:80px;">&nbsp;</div></div>
     <div class="index-card"><div class="skeleton" style="height:80px;">&nbsp;</div></div>
@@ -967,11 +1012,13 @@
 
   <!-- Search + watchlist -->
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <div class="search-bar" style="flex:1;min-width:260px">
-      <span style="color:var(--muted)">🔍</span>
-      <input id="chartSearch" type="text" placeholder="Search symbol or company name..." oninput="filterChartSearch()" autocomplete="off" />
+    <div style="position:relative;flex:1;min-width:260px">
+      <div class="search-bar">
+        <span style="color:var(--muted)">🔍</span>
+        <input id="chartSearch" type="text" placeholder="Search symbol or company name..." oninput="filterChartSearch()" autocomplete="off" />
+      </div>
+      <div id="chartSearchDropdown"></div>
     </div>
-    <div id="chartSearchDropdown" style="position:relative"></div>
     <button class="refresh-btn" id="watchlistBtn" onclick="toggleWatchlist()" style="gap:6px">⭐ Watchlist <span id="watchlistCount" style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px">0</span></button>
   </div>
 
@@ -1015,11 +1062,15 @@
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title"><div class="dot" style="background:var(--accent)"></div><span id="chartTitle">Price Chart</span></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button id="chartModeCandle" class="chart-toggle active" onclick="setChartMode('candle',this)">Candles</button>
+          <button id="chartModeArea"   class="chart-toggle"        onclick="setChartMode('area',this)"  >Area</button>
+          <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
           <button class="chart-toggle active" data-key="ma20"   onclick="toggleIndicator('ma20',this)"  >MA 20</button>
           <button class="chart-toggle"        data-key="ma50"   onclick="toggleIndicator('ma50',this)"  >MA 50</button>
           <button class="chart-toggle"        data-key="ma200"  onclick="toggleIndicator('ma200',this)" >MA 200</button>
           <button class="chart-toggle"        data-key="hl"     onclick="toggleIndicator('hl',this)"    >Hi/Lo Band</button>
+          <button class="chart-toggle"        data-key="sr"     onclick="toggleIndicator('sr',this)"    >S/R Lines</button>
         </div>
       </div>
       <div id="lwChart" style="height:380px"></div>
@@ -1352,10 +1403,12 @@
   let histChart = null;
 
   // Chart view
-  let lwChart = null, lwArea = null, lwHLHigh = null, lwHLLow = null;
+  let lwChart = null, lwArea = null, lwCandle = null, lwHLHigh = null, lwHLLow = null;
   let lwMA20 = null, lwMA50 = null, lwMA200 = null;
+  let lwSRLines = [];
   let volChartInst = null, rsiChartInst = null;
-  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false };
+  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false };
+  let chartMode = 'candle'; // 'candle' | 'area'
   let currentChartSymbol = null;
   let scrData = [];
   let watchlist = JSON.parse(localStorage.getItem('nepsewl') || '[]');
@@ -1789,6 +1842,51 @@
     document.getElementById('breadthLabel').textContent = `${total} securities`;
   }
 
+  function renderSectorHeatmap() {
+    if(!allStocks.length || !Object.keys(companyMap).length) return;
+    const map = {};
+    for(const s of allStocks) {
+      const sector = companyMap[s.symbol]?.sectorName;
+      if(!sector || sector === '—') continue;
+      if(!map[sector]) map[sector] = { sum: 0, count: 0, up: 0, down: 0 };
+      const pct = s.percentageChange ?? 0;
+      map[sector].sum   += pct;
+      map[sector].count += 1;
+      if(pct >  0.01) map[sector].up++;
+      if(pct < -0.01) map[sector].down++;
+    }
+    const sectors = Object.entries(map)
+      .map(([name, d]) => ({ name, avg: d.sum / d.count, count: d.count, up: d.up, down: d.down }))
+      .sort((a, b) => b.avg - a.avg);
+
+    const maxAbs = Math.max(...sectors.map(s => Math.abs(s.avg)), 0.1);
+
+    const container = document.getElementById('sectorHeatmap');
+    container.innerHTML = sectors.map(s => {
+      const intensity = Math.min(Math.abs(s.avg) / maxAbs, 1);
+      const alpha = 0.3 + intensity * 0.65;
+      const bg = s.avg >= 0
+        ? `rgba(34,197,94,${alpha})`
+        : `rgba(239,68,68,${alpha})`;
+      const sign = s.avg >= 0 ? '+' : '';
+      const short = s.name.replace('Commercial Banks','Com. Banks').replace('Development Banks','Dev. Banks').replace('Finance','Finance').replace('Hydropower','Hydro').replace('Microfinance','MFI').replace('Life Insurance','Life Ins').replace('Non Life Insurance','NLI').replace('Investment','Inv.');
+      return `<div class="heat-tile" style="background:${bg}" onclick="filterScreenerBySector('${s.name}')">
+        <div class="ht-name">${short}</div>
+        <div class="ht-pct">${sign}${s.avg.toFixed(2)}%</div>
+        <div class="ht-count">${s.up}↑ ${s.down}↓ · ${s.count} stocks</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('sectorHeatmapPanel').style.display = '';
+  }
+
+  function filterScreenerBySector(sector) {
+    const scrBtn = document.querySelector('.nav-tab[onclick*="screener"]');
+    showView('screener', scrBtn);
+    const sel = document.getElementById('scrSector');
+    if(sel) { sel.value = sector; applyScreener(); }
+  }
+
   // ══════════════════════════════════════════════════
   //  COMPANY MAP (for sector data in screener)
   // ══════════════════════════════════════════════════
@@ -1802,12 +1900,42 @@
         ...s,
         sectorName: companyMap[s.symbol]?.sectorName || '—'
       }));
+      renderSectorHeatmap();
     } catch {}
   }
 
   // ══════════════════════════════════════════════════
   //  STOCK CHART (Lightweight Charts + Chart.js)
   // ══════════════════════════════════════════════════
+
+  function calcSR(highs, lows, closes, dates, swing = 5, maxLevels = 6) {
+    const n = highs.length;
+    const pivotHighs = [], pivotLows = [];
+    for(let i = swing; i < n - swing; i++) {
+      const h = highs[i];
+      const l = lows[i];
+      if(highs.slice(i-swing,i).every(v=>v<=h) && highs.slice(i+1,i+swing+1).every(v=>v<=h))
+        pivotHighs.push(h);
+      if(lows.slice(i-swing,i).every(v=>v>=l) && lows.slice(i+1,i+swing+1).every(v=>v>=l))
+        pivotLows.push(l);
+    }
+    const cluster = (vals) => {
+      if(!vals.length) return [];
+      vals.sort((a,b)=>a-b);
+      const groups = [[vals[0]]];
+      for(let i=1;i<vals.length;i++) {
+        const top = groups[groups.length-1];
+        const avg = top.reduce((s,v)=>s+v,0)/top.length;
+        if(Math.abs(vals[i]-avg)/avg < 0.012) top.push(vals[i]);
+        else groups.push([vals[i]]);
+      }
+      return groups.map(g => g.reduce((s,v)=>s+v,0)/g.length).sort((a,b)=>b-a);
+    };
+    const last = closes[closes.length-1];
+    const res = cluster(pivotHighs).filter(p=>p>last).slice(0, maxLevels).map(p=>({price:p,type:'resistance'}));
+    const sup = cluster(pivotLows).filter(p=>p<last).reverse().slice(0, maxLevels).map(p=>({price:p,type:'support'}));
+    return [...res, ...sup];
+  }
 
   function calcSMA(closes, period) {
     return closes.map((_, i) => {
@@ -1903,14 +2031,32 @@
         handleScale: { mouseWheel: true, pinch: true },
       });
 
-      // Area series (close price)
-      lwArea = lwChart.addAreaSeries({
-        lineColor: '#3b82f6', lineWidth: 2,
-        topColor: 'rgba(59,130,246,0.25)',
-        bottomColor: 'rgba(59,130,246,0.02)',
-        priceFormat: { type: 'price', precision: 2 },
-      });
-      lwArea.setData(dates.map((d,i) => ({ time: d, value: closes[i] })));
+      // Price series — candle or area
+      lwArea = null; lwCandle = null;
+      if(chartMode === 'candle') {
+        const opens = data.map(d => d.openPrice ?? d.closePrice);
+        lwCandle = lwChart.addCandlestickSeries({
+          upColor: '#22c55e',   downColor: '#ef4444',
+          borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+          wickUpColor: '#22c55e',   wickDownColor: '#ef4444',
+          priceFormat: { type: 'price', precision: 2 },
+        });
+        lwCandle.setData(dates.map((d,i) => ({
+          time: d,
+          open:  opens[i],
+          high:  highs[i],
+          low:   lows[i],
+          close: closes[i],
+        })));
+      } else {
+        lwArea = lwChart.addAreaSeries({
+          lineColor: '#3b82f6', lineWidth: 2,
+          topColor: 'rgba(59,130,246,0.25)',
+          bottomColor: 'rgba(59,130,246,0.02)',
+          priceFormat: { type: 'price', precision: 2 },
+        });
+        lwArea.setData(dates.map((d,i) => ({ time: d, value: closes[i] })));
+      }
 
       // Hi/Lo band
       lwHLHigh = lwChart.addLineSeries({ color: 'rgba(34,197,94,0.4)', lineWidth: 1, lineStyle: 2 });
@@ -1937,6 +2083,28 @@
       lwMA20.applyOptions({ visible: chartIndicators.ma20 });
       lwMA50.applyOptions({ visible: chartIndicators.ma50 });
       lwMA200.applyOptions({ visible: chartIndicators.ma200 });
+
+      // S/R Lines
+      lwSRLines = [];
+      const srLevels = calcSR(highs, lows, closes, dates);
+      for(const lvl of srLevels) {
+        const isRes = lvl.type === 'resistance';
+        const line = lwChart.addLineSeries({
+          color: isRes ? 'rgba(239,68,68,0.7)' : 'rgba(34,197,94,0.7)',
+          lineWidth: 1,
+          lineStyle: 1, // dashed
+          priceLineVisible: false,
+          lastValueVisible: true,
+          crosshairMarkerVisible: false,
+          title: isRes ? 'R' : 'S',
+        });
+        line.setData([
+          { time: dates[0],             value: lvl.price },
+          { time: dates[dates.length-1], value: lvl.price },
+        ]);
+        line.applyOptions({ visible: chartIndicators.sr });
+        lwSRLines.push(line);
+      }
 
       lwChart.timeScale().fitContent();
 
@@ -2002,6 +2170,17 @@
       lwHLHigh?.applyOptions({ visible: chartIndicators.hl });
       lwHLLow?.applyOptions({ visible: chartIndicators.hl });
     }
+    if(key === 'sr') {
+      lwSRLines.forEach(l => l.applyOptions({ visible: chartIndicators.sr }));
+    }
+  }
+
+  function setChartMode(mode, btn) {
+    if(chartMode === mode) return;
+    chartMode = mode;
+    document.getElementById('chartModeCandle').classList.toggle('active', mode === 'candle');
+    document.getElementById('chartModeArea').classList.toggle('active',   mode === 'area');
+    if(currentChartSymbol) loadChart(currentChartSymbol);
   }
 
   // ── Chart search dropdown ──
