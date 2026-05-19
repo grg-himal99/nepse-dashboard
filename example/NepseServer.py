@@ -497,5 +497,25 @@ def getDepthHistory(symbol):
         return flask.jsonify({"error": str(e)}), 500
 
 
+@app.route("/chart/<symbol>")
+def getChart(symbol):
+    try:
+        data = nepse.getCompanyPriceVolumeHistory(symbol)
+        content = data.get("content", []) if isinstance(data, dict) else (data or [])
+        content = list(reversed(content))  # oldest first
+        resp = flask.jsonify(content)
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+    except Exception as e:
+        return flask.jsonify({"error": str(e)}), 500
+
+
+@app.route("/SecurityList")
+def getSecurityList():
+    response = flask.jsonify(_get("securityList") or [])
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
