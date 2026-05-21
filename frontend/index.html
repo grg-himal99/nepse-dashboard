@@ -580,6 +580,42 @@
 
     .upload-again:hover { color: var(--text); }
 
+    /* ── Signal scanner ── */
+    .sig-filter {
+      padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all .15s;
+    }
+    .sig-filter:hover  { border-color: var(--accent); color: var(--text); }
+    .sig-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .sig-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+      white-space: nowrap;
+    }
+    .sig-badge.rsi-low   { background: rgba(59,130,246,.2);  color: #60a5fa; }
+    .sig-badge.rsi-high  { background: rgba(251,146,60,.2);  color: #fb923c; }
+    .sig-badge.vol-spike { background: rgba(168,85,247,.2);  color: #c084fc; }
+    .sig-badge.ma-bull   { background: rgba(34,197,94,.2);   color: #4ade80; }
+    .sig-badge.ma-bear   { background: rgba(239,68,68,.2);   color: #f87171; }
+    .sig-badge.w52-high  { background: rgba(234,179,8,.2);   color: #facc15; }
+    .sig-badge.w52-low   { background: rgba(100,116,139,.2); color: #94a3b8; }
+    .sig-badge.buy-press { background: rgba(34,197,94,.15);  color: #4ade80; }
+    .sig-badge.sell-press{ background: rgba(239,68,68,.15);  color: #f87171; }
+    .sig-badge.momentum  { background: rgba(20,184,166,.2);  color: #2dd4bf; }
+
+    .sig-stat-card {
+      flex: 1; min-width: 120px; padding: 14px 18px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .sig-stat-card .ss-val { font-size: 22px; font-weight: 800; }
+    .sig-stat-card .ss-lbl { font-size: 11px; color: var(--muted); }
+
+    .sig-row { cursor: pointer; transition: background .1s; }
+    .sig-row:hover { background: var(--surface2); }
+
     /* ── Sector heatmap ── */
     .heat-tile {
       border-radius: 10px;
@@ -815,6 +851,7 @@
     <button class="nav-tab active" onclick="showView('market', this)">📊 Market</button>
     <button class="nav-tab" onclick="showView('charts', this)">📈 Charts</button>
     <button class="nav-tab" onclick="showView('screener', this)">🔬 Screener</button>
+    <button class="nav-tab" onclick="showView('signals', this)">⚡ Signals</button>
     <button class="nav-tab" onclick="showView('portfolio', this)">💼 Portfolio</button>
   </div>
 
@@ -1182,6 +1219,44 @@
 
 </main>
 
+<!-- ══════════════ SIGNALS VIEW ══════════════ -->
+<main id="signalsView" style="display:none">
+
+  <!-- Header + controls -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title"><div class="dot" style="background:#a855f7"></div>Signal Scanner</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div id="scanProgress" style="font-size:12px;color:var(--muted)">Ready</div>
+        <button class="refresh-btn" id="scanBtn" onclick="runSignalScan()">⚡ Run Deep Scan</button>
+      </div>
+    </div>
+    <!-- Filter chips -->
+    <div style="padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)">
+      <button class="sig-filter active" data-filter="all"      onclick="setSigFilter('all',this)">All</button>
+      <button class="sig-filter"        data-filter="bullish"  onclick="setSigFilter('bullish',this)">🟢 Bullish</button>
+      <button class="sig-filter"        data-filter="bearish"  onclick="setSigFilter('bearish',this)">🔴 Bearish</button>
+      <button class="sig-filter"        data-filter="rsi"      onclick="setSigFilter('rsi',this)">RSI</button>
+      <button class="sig-filter"        data-filter="volume"   onclick="setSigFilter('volume',this)">Volume</button>
+      <button class="sig-filter"        data-filter="ma"       onclick="setSigFilter('ma',this)">MA Cross</button>
+      <button class="sig-filter"        data-filter="momentum" onclick="setSigFilter('momentum',this)">Momentum</button>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div id="sigStats" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+
+  <!-- Results table -->
+  <div class="panel">
+    <div id="sigTable" style="overflow-x:auto">
+      <div style="padding:48px;text-align:center;color:var(--muted)">
+        Press <strong>⚡ Run Deep Scan</strong> to analyse all stocks
+      </div>
+    </div>
+  </div>
+
+</main>
+
 <!-- ══════════════ PORTFOLIO VIEW ══════════════ -->
 <main id="portfolioView" style="display:none">
 
@@ -1428,7 +1503,7 @@
 
   // ── View switching ────────────────────────────────
   function showView(view, el) {
-    ['market','charts','screener','portfolio'].forEach(v =>
+    ['market','charts','screener','signals','portfolio'].forEach(v =>
       document.getElementById(v+'View').style.display = v===view ? '' : 'none');
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
@@ -2278,6 +2353,204 @@
 
   // ══════════════════════════════════════════════════
   //  SCREENER
+  // ══════════════════════════════════════════════════
+  // SIGNAL SCANNER
+  // ══════════════════════════════════════════════════
+
+  let sigResults = [];
+  let sigFilter  = 'all';
+
+  const SIG_META = {
+    'rsi-low':    { label: 'RSI Oversold',    cls: 'rsi-low',    bullish: true  },
+    'rsi-high':   { label: 'RSI Overbought',  cls: 'rsi-high',   bullish: false },
+    'vol-spike':  { label: 'Volume Spike',    cls: 'vol-spike',  bullish: null  },
+    'ma-bull':    { label: 'MA Bull Cross',   cls: 'ma-bull',    bullish: true  },
+    'ma-bear':    { label: 'MA Bear Cross',   cls: 'ma-bear',    bullish: false },
+    'w52-high':   { label: '52W High',        cls: 'w52-high',   bullish: true  },
+    'w52-low':    { label: '52W Low',         cls: 'w52-low',    bullish: false },
+    'buy-press':  { label: 'Buy Pressure',    cls: 'buy-press',  bullish: true  },
+    'sell-press': { label: 'Sell Pressure',   cls: 'sell-press', bullish: false },
+    'momentum':   { label: 'Momentum',        cls: 'momentum',   bullish: true  },
+  };
+
+  function setSigFilter(f, btn) {
+    sigFilter = f;
+    document.querySelectorAll('.sig-filter').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderSigTable();
+  }
+
+  async function runSignalScan() {
+    const btn = document.getElementById('scanBtn');
+    const prog = document.getElementById('scanProgress');
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning…';
+    sigResults = [];
+
+    // Quick signals from existing data (instant)
+    for(const s of allStocks) {
+      const signals = [];
+      const pct = s.percentageChange ?? 0;
+      const depth = depthMap[s.symbol];
+      if(depth) {
+        if(depth.imbalance >  0.4) signals.push('buy-press');
+        if(depth.imbalance < -0.4) signals.push('sell-press');
+      }
+      if(signals.length) sigResults.push({ ...s, signals, sector: companyMap[s.symbol]?.sectorName || '—' });
+    }
+    renderSigTable();
+
+    // Deep scan: fetch chart data per stock in batches
+    const stocks = [...allStocks].sort((a,b) =>
+      Math.abs(b.percentageChange??0) - Math.abs(a.percentageChange??0));
+    const total = stocks.length;
+    let done = 0;
+
+    const processBatch = async (batch) => {
+      await Promise.all(batch.map(async (s) => {
+        try {
+          const data = await apiFetch(`/chart/${s.symbol}`);
+          if(!data || data.length < 21) return;
+
+          const closes  = data.map(d => d.closePrice);
+          const highs   = data.map(d => d.highPrice);
+          const lows    = data.map(d => d.lowPrice);
+          const volumes = data.map(d => d.totalTradedQuantity);
+          const n = closes.length;
+
+          const signals = [];
+
+          // RSI
+          const rsi = calcRSI(closes);
+          const lastRSI = rsi.filter(Boolean).slice(-1)[0];
+          if(lastRSI != null) {
+            if(lastRSI < 35) signals.push('rsi-low');
+            if(lastRSI > 65) signals.push('rsi-high');
+          }
+
+          // Volume spike (today vs 20-day avg)
+          if(volumes.length >= 21) {
+            const avgVol = volumes.slice(-21,-1).reduce((a,b)=>a+b,0) / 20;
+            if(avgVol > 0 && volumes[n-1] > avgVol * 1.8) signals.push('vol-spike');
+          }
+
+          // MA crossover (MA20 vs MA50, check last 3 bars)
+          const ma20 = calcSMA(closes, 20);
+          const ma50 = calcSMA(closes, 50);
+          if(ma20[n-1] && ma50[n-1] && ma20[n-4] && ma50[n-4]) {
+            const crossedUp   = ma20[n-4] <= ma50[n-4] && ma20[n-1] > ma50[n-1];
+            const crossedDown = ma20[n-4] >= ma50[n-4] && ma20[n-1] < ma50[n-1];
+            if(crossedUp)   signals.push('ma-bull');
+            if(crossedDown) signals.push('ma-bear');
+          }
+
+          // 52-week high/low (within 3%)
+          const h52 = Math.max(...highs);
+          const l52 = Math.min(...lows);
+          const ltp = closes[n-1];
+          if(ltp >= h52 * 0.97) signals.push('w52-high');
+          if(ltp <= l52 * 1.03) signals.push('w52-low');
+
+          // Momentum: price above MA20 and MA20 above MA50
+          if(ma20[n-1] && ma50[n-1] && ltp > ma20[n-1] && ma20[n-1] > ma50[n-1])
+            signals.push('momentum');
+
+          // Merge with quick signals already found
+          const existing = sigResults.find(r => r.symbol === s.symbol);
+          const merged = [...new Set([...(existing?.signals||[]), ...signals])];
+          if(merged.length) {
+            if(existing) existing.signals = merged;
+            else sigResults.push({ ...s, signals: merged, sector: companyMap[s.symbol]?.sectorName||'—' });
+          } else {
+            // remove if no signals at all
+            sigResults = sigResults.filter(r => r.symbol !== s.symbol);
+          }
+        } catch {}
+        done++;
+        prog.textContent = `Scanning ${done}/${total}…`;
+        renderSigStats();
+      }));
+    };
+
+    const BATCH = 8;
+    for(let i = 0; i < stocks.length; i += BATCH) {
+      await processBatch(stocks.slice(i, i + BATCH));
+      renderSigTable();
+    }
+
+    prog.textContent = `Done — ${sigResults.length} signals found`;
+    btn.disabled = false;
+    btn.textContent = '⚡ Run Deep Scan';
+    renderSigTable();
+    renderSigStats();
+  }
+
+  function renderSigStats() {
+    const bullish = sigResults.filter(r => r.signals.some(s => SIG_META[s]?.bullish === true)).length;
+    const bearish = sigResults.filter(r => r.signals.some(s => SIG_META[s]?.bullish === false)).length;
+    const vol     = sigResults.filter(r => r.signals.includes('vol-spike')).length;
+    const rsiLow  = sigResults.filter(r => r.signals.includes('rsi-low')).length;
+    document.getElementById('sigStats').innerHTML = [
+      { val: sigResults.length, lbl: 'Total Signals', color: '#a855f7' },
+      { val: bullish,           lbl: 'Bullish',        color: '#22c55e' },
+      { val: bearish,           lbl: 'Bearish',         color: '#ef4444' },
+      { val: vol,               lbl: 'Volume Spikes',   color: '#c084fc' },
+      { val: rsiLow,            lbl: 'RSI Oversold',    color: '#60a5fa' },
+    ].map(c => `
+      <div class="sig-stat-card">
+        <div class="ss-val" style="color:${c.color}">${c.val}</div>
+        <div class="ss-lbl">${c.lbl}</div>
+      </div>`).join('');
+  }
+
+  function renderSigTable() {
+    let rows = [...sigResults].sort((a,b) => b.signals.length - a.signals.length);
+
+    if(sigFilter === 'bullish')  rows = rows.filter(r => r.signals.some(s => SIG_META[s]?.bullish === true));
+    if(sigFilter === 'bearish')  rows = rows.filter(r => r.signals.some(s => SIG_META[s]?.bullish === false));
+    if(sigFilter === 'rsi')      rows = rows.filter(r => r.signals.some(s => s.startsWith('rsi')));
+    if(sigFilter === 'volume')   rows = rows.filter(r => r.signals.includes('vol-spike'));
+    if(sigFilter === 'ma')       rows = rows.filter(r => r.signals.some(s => s.startsWith('ma-')));
+    if(sigFilter === 'momentum') rows = rows.filter(r => r.signals.includes('momentum'));
+
+    const wrap = document.getElementById('sigTable');
+    if(!rows.length) {
+      wrap.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted)">No signals match this filter</div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <table class="stocks-table" style="width:100%">
+        <thead><tr>
+          <th>Symbol</th><th>Sector</th><th class="right">LTP</th>
+          <th class="right">% Change</th><th>Signals</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const pct = r.percentageChange ?? 0;
+            const badges = r.signals.map(s => {
+              const m = SIG_META[s]; if(!m) return '';
+              return `<span class="sig-badge ${m.cls}">${m.label}</span>`;
+            }).join(' ');
+            return `<tr class="sig-row" onclick="selectSigStock('${r.symbol}')">
+              <td><span class="symbol-badge">${r.symbol}</span></td>
+              <td style="font-size:12px;color:var(--muted)">${r.sector}</td>
+              <td class="right">Rs ${fmt(r.lastTradedPrice)}</td>
+              <td class="right ${changeClass(pct)}">${pct>=0?'+':''}${fmt(pct)}%</td>
+              <td style="padding:8px 12px">${badges}</td>
+              <td><button class="refresh-btn" style="padding:4px 10px;font-size:11px" onclick="event.stopPropagation();selectSigStock('${r.symbol}')">Chart →</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function selectSigStock(symbol) {
+    const chartTab = document.querySelector('.nav-tab[onclick*="charts"]');
+    showView('charts', chartTab);
+    selectChartSymbol(symbol);
+  }
+
   // ══════════════════════════════════════════════════
 
   function populateSectorFilter() {
