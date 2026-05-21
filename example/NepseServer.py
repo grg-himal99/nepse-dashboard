@@ -1,8 +1,11 @@
 import glob
 import json
 import os
+import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date as _date, timedelta
 from json import JSONDecodeError
 
 import flask
@@ -517,9 +520,106 @@ def getSecurityList():
     return response
 
 
-# ── Floorsheet summary (accumulation / distribution) ──────────────────────────
+# ── Shared floorsheet helpers (used by both A/D and Broker Summary) ───────────
+_BROKER_DB   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "broker_data.db")
+_BROKER_LOCK = threading.Lock()
+_PERIOD_DAYS = {"1d": 1, "1w": 5, "2w": 10, "1m": 22}
+
+# In-memory broker cache for 1D (populated whenever full floorsheet is fetched)
+_broker_live = {"data": None, "date": None}
+
+
+def _init_broker_db():
+    conn = sqlite3.connect(_BROKER_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS broker_daily (
+            business_date TEXT NOT NULL,
+            broker_id     TEXT NOT NULL,
+            buy_qty       INTEGER DEFAULT 0,
+            buy_amt       REAL    DEFAULT 0.0,
+            sell_qty      INTEGER DEFAULT 0,
+            sell_amt      REAL    DEFAULT 0.0,
+            PRIMARY KEY (business_date, broker_id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _nepse_trading_days(n):
+    """Return last n Nepal trading dates (Sun–Thu). Newest first."""
+    days, cur = [], _date.today()
+    while len(days) < n:
+        wd = cur.weekday()   # Mon=0 … Sun=6
+        if wd not in (4, 5): # skip Fri(4) and Sat(5)
+            days.append(cur.strftime("%Y-%m-%d"))
+        cur -= timedelta(days=1)
+        if (_date.today() - cur).days > 90:
+            break
+    return days
+
+
+def _store_broker_day(date_str, broker_data):
+    with _BROKER_LOCK:
+        conn = sqlite3.connect(_BROKER_DB)
+        conn.execute("DELETE FROM broker_daily WHERE business_date=?", (date_str,))
+        for bid, d in broker_data.items():
+            conn.execute(
+                "INSERT INTO broker_daily VALUES (?,?,?,?,?,?)",
+                (date_str, bid, d["buy_qty"], d["buy_amt"], d["sell_qty"], d["sell_amt"])
+            )
+        conn.commit()
+        conn.close()
+
+
+def _rows_to_broker_data(rows):
+    """Aggregate raw floorsheet rows into per-broker buy/sell totals."""
+    broker_data = {}
+    for row in rows:
+        buyer  = str(row.get("buyerMemberId",  "") or "").strip()
+        seller = str(row.get("sellerMemberId", "") or "").strip()
+        qty = row.get("contractQuantity", 0) or 0
+        amt = row.get("contractAmount",   0) or 0
+        if buyer:
+            d = broker_data.setdefault(buyer,  {"buy_qty": 0, "buy_amt": 0.0, "sell_qty": 0, "sell_amt": 0.0})
+            d["buy_qty"] += qty; d["buy_amt"] += amt
+        if seller:
+            d = broker_data.setdefault(seller, {"buy_qty": 0, "buy_amt": 0.0, "sell_qty": 0, "sell_amt": 0.0})
+            d["sell_qty"] += qty; d["sell_amt"] += amt
+    return broker_data
+
+
+_init_broker_db()
+
+
+# ── Floorsheet fetch (shared by A/D view + Broker Summary) ────────────────────
 _fs_cache = {"data": None, "ts": 0}
 _FS_TTL   = 600  # 10 minutes
+
+
+def _fetch_full_floorsheet():
+    """Fetch all floorsheet pages. Returns raw rows list or raises."""
+    base_url = nepse.api_end_points["floor_sheet"]
+    url = f"{base_url}?size=500&sort=contractId,desc"
+
+    first = nepse.requestPOSTAPI(url=url, payload_generator=nepse.getPOSTPayloadIDForFloorSheet)
+    if not first or "floorsheets" not in first:
+        raise ValueError("empty floorsheet response")
+
+    rows        = list(first["floorsheets"]["content"])
+    total_pages = first["floorsheets"]["totalPages"]
+
+    for page in range(1, total_pages):
+        try:
+            nxt = nepse.requestPOSTAPI(
+                url=f"{url}&page={page}",
+                payload_generator=nepse.getPOSTPayloadIDForFloorSheet,
+            )
+            rows.extend(nxt["floorsheets"]["content"])
+        except Exception:
+            break
+
+    return rows
 
 
 @app.route("/floorsheet/summary")
@@ -531,75 +631,45 @@ def getFloorsheetSummary():
             resp.headers.add("Access-Control-Allow-Origin", "*")
             return resp
 
-        base_url = nepse.api_end_points["floor_sheet"]
-        url = f"{base_url}?size=500&sort=contractId,desc"
+        rows = _fetch_full_floorsheet()
 
-        first = nepse.requestPOSTAPI(url=url, payload_generator=nepse.getPOSTPayloadIDForFloorSheet)
-        if not first or "floorsheets" not in first:
-            raise ValueError("empty response")
-
-        rows      = list(first["floorsheets"]["content"])
-        total_pages = first["floorsheets"]["totalPages"]
-
-        # Fetch ALL pages for complete accuracy (cached for 10 min)
-        for page in range(1, total_pages):
-            try:
-                nxt = nepse.requestPOSTAPI(
-                    url=f"{url}&page={page}",
-                    payload_generator=nepse.getPOSTPayloadIDForFloorSheet,
-                )
-                rows.extend(nxt["floorsheets"]["content"])
-            except Exception:
-                break
-
-        # Aggregate per (symbol, broker) pair — same stock can appear
-        # multiple times if different brokers are buying/selling it
-        buy_pairs  = {}   # {(symbol, broker): qty}
-        sell_pairs = {}
-        buy_amt    = {}
-        sell_amt   = {}
+        # ── A/D aggregation (symbol + broker pairs) ──
+        buy_pairs = {}; sell_pairs = {}
+        buy_amt   = {}; sell_amt   = {}
 
         for row in rows:
             sym    = row.get("stockSymbol", "")
-            buyer  = str(row.get("buyerMemberId", ""))
+            buyer  = str(row.get("buyerMemberId",  ""))
             seller = str(row.get("sellerMemberId", ""))
             qty    = row.get("contractQuantity", 0) or 0
-            amt    = row.get("contractAmount", 0) or 0
-
+            amt    = row.get("contractAmount",   0) or 0
             if not sym:
                 continue
-
-            bk = (sym, buyer)
-            buy_pairs[bk]  = buy_pairs.get(bk,  0) + qty
-            buy_amt[bk]    = buy_amt.get(bk,    0) + amt
-
-            sk = (sym, seller)
-            sell_pairs[sk] = sell_pairs.get(sk, 0) + qty
-            sell_amt[sk]   = sell_amt.get(sk,   0) + amt
+            bk = (sym, buyer);  buy_pairs[bk]  = buy_pairs.get(bk,  0) + qty; buy_amt[bk]  = buy_amt.get(bk,  0) + amt
+            sk = (sym, seller); sell_pairs[sk] = sell_pairs.get(sk, 0) + qty; sell_amt[sk] = sell_amt.get(sk, 0) + amt
 
         def build_rows(pair_qty, pair_amt):
             out = []
             for (sym, broker), qty in pair_qty.items():
                 total_amt = pair_amt.get((sym, broker), 0)
-                avg_rate  = round(total_amt / qty, 2) if qty else 0
-                out.append({
-                    "symbol":   sym,
-                    "totalQty": qty,
-                    "broker":   broker,
-                    "totalAmt": round(total_amt, 2),
-                    "avgRate":  avg_rate,
-                })
+                out.append({"symbol": sym, "totalQty": qty, "broker": broker,
+                             "totalAmt": round(total_amt, 2), "avgRate": round(total_amt / qty, 2) if qty else 0})
             out.sort(key=lambda x: x["totalQty"], reverse=True)
             return out[:50]
 
-        result = {
-            "accumulation": build_rows(buy_pairs,  buy_amt),
-            "distribution": build_rows(sell_pairs, sell_amt),
-            "totalRows":    len(rows),
-        }
-
+        result = {"accumulation": build_rows(buy_pairs, buy_amt),
+                  "distribution": build_rows(sell_pairs, sell_amt),
+                  "totalRows": len(rows)}
         _fs_cache["data"] = result
         _fs_cache["ts"]   = now
+
+        # ── Also build broker-level aggregate and persist ──
+        broker_data = _rows_to_broker_data(rows)
+        trade_date  = (_nepse_trading_days(1) or [_date.today().strftime("%Y-%m-%d")])[0]
+        _store_broker_day(trade_date, broker_data)
+        _broker_live["data"] = broker_data
+        _broker_live["date"] = trade_date
+        print(f"[floorsheet] {len(rows)} rows · {len(broker_data)} brokers stored for {trade_date}")
 
         resp = flask.jsonify(result)
         resp.headers.add("Access-Control-Allow-Origin", "*")
@@ -611,5 +681,119 @@ def getFloorsheetSummary():
         return resp
 
 
+# ── Broker Summary (multi-period, SQLite-backed) ──────────────────────────────
+
+@app.route("/broker/summary")
+def getBrokerSummary():
+    period = request.args.get("period", "1d")
+    n_days = _PERIOD_DAYS.get(period, 1)
+    dates  = _nepse_trading_days(n_days)
+
+    # For 1D: if live cache has today's data, use it directly (no DB needed)
+    if period == "1d" and _broker_live["data"] and _broker_live["date"] in dates:
+        broker_data = _broker_live["data"]
+        brokers = _broker_data_to_list(broker_data)
+        resp = flask.jsonify({
+            "period": period, "requestedDates": dates,
+            "availableDates": [_broker_live["date"]],
+            "fetching": False, "brokers": brokers,
+        })
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+
+    # Multi-day: query SQLite
+    conn = sqlite3.connect(_BROKER_DB)
+    ph   = ",".join("?" * len(dates))
+    rows = conn.execute(
+        f"""SELECT broker_id, SUM(buy_qty), SUM(buy_amt), SUM(sell_qty), SUM(sell_amt)
+            FROM broker_daily WHERE business_date IN ({ph}) GROUP BY broker_id""",
+        dates,
+    ).fetchall()
+    avail = [r[0] for r in conn.execute(
+        f"SELECT DISTINCT business_date FROM broker_daily WHERE business_date IN ({ph}) ORDER BY business_date DESC",
+        dates,
+    ).fetchall()]
+    conn.close()
+
+    broker_list = []
+    for bid, bq, ba, sq, sa in rows:
+        bq = bq or 0; ba = ba or 0.0; sq = sq or 0; sa = sa or 0.0
+        net_qty = bq - sq; net_amt = ba - sa
+        broker_list.append({"brokerId": bid, "buyQty": bq, "buyAmt": round(ba, 2),
+                             "sellQty": sq, "sellAmt": round(sa, 2),
+                             "netQty": net_qty, "netAmt": round(net_amt, 2),
+                             "bias": "bull" if net_qty > 0 else ("bear" if net_qty < 0 else "neutral")})
+    broker_list.sort(key=lambda x: x["netQty"], reverse=True)
+
+    resp = flask.jsonify({
+        "period": period, "requestedDates": dates, "availableDates": avail,
+        "fetching": False, "brokers": broker_list,
+    })
+    resp.headers.add("Access-Control-Allow-Origin", "*")
+    return resp
+
+
+def _broker_data_to_list(broker_data):
+    out = []
+    for bid, d in broker_data.items():
+        bq = d["buy_qty"]; ba = d["buy_amt"]; sq = d["sell_qty"]; sa = d["sell_amt"]
+        net_qty = bq - sq; net_amt = ba - sa
+        out.append({"brokerId": bid, "buyQty": bq, "buyAmt": round(ba, 2),
+                    "sellQty": sq, "sellAmt": round(sa, 2),
+                    "netQty": net_qty, "netAmt": round(net_amt, 2),
+                    "bias": "bull" if net_qty > 0 else ("bear" if net_qty < 0 else "neutral")})
+    out.sort(key=lambda x: x["netQty"], reverse=True)
+    return out
+
+
+def _auto_floorsheet_loop():
+    """Try to fetch full floorsheet every 30 min. Populates broker + A/D caches when market has data."""
+    time.sleep(15)  # let refresh loop initialize tokens first
+    while True:
+        print("[auto-floorsheet] attempting fetch...", flush=True)
+        try:
+            rows = _fetch_full_floorsheet()
+            if rows:
+                broker_data = _rows_to_broker_data(rows)
+                trade_date  = (_nepse_trading_days(1) or [_date.today().strftime("%Y-%m-%d")])[0]
+                _store_broker_day(trade_date, broker_data)
+                _broker_live["data"] = broker_data
+                _broker_live["date"] = trade_date
+
+                buy_pairs = {}; sell_pairs = {}; buy_amt = {}; sell_amt = {}
+                for row in rows:
+                    sym    = row.get("stockSymbol", "")
+                    buyer  = str(row.get("buyerMemberId",  ""))
+                    seller = str(row.get("sellerMemberId", ""))
+                    qty    = row.get("contractQuantity", 0) or 0
+                    amt    = row.get("contractAmount",   0) or 0
+                    if not sym: continue
+                    bk = (sym, buyer);  buy_pairs[bk]  = buy_pairs.get(bk,  0)+qty; buy_amt[bk]  = buy_amt.get(bk,  0)+amt
+                    sk = (sym, seller); sell_pairs[sk] = sell_pairs.get(sk, 0)+qty; sell_amt[sk] = sell_amt.get(sk, 0)+amt
+
+                def _build(pq, pa):
+                    out = []
+                    for (s, b), q in pq.items():
+                        a = pa.get((s, b), 0)
+                        out.append({"symbol": s, "totalQty": q, "broker": b,
+                                    "totalAmt": round(a, 2), "avgRate": round(a/q, 2) if q else 0})
+                    out.sort(key=lambda x: x["totalQty"], reverse=True)
+                    return out[:50]
+
+                _fs_cache["data"] = {"accumulation": _build(buy_pairs, buy_amt),
+                                     "distribution": _build(sell_pairs, sell_amt),
+                                     "totalRows": len(rows)}
+                _fs_cache["ts"] = time.time()
+                print(f"[auto-floorsheet] {len(rows)} rows · {len(broker_data)} brokers · date={trade_date}", flush=True)
+            else:
+                print("[auto-floorsheet] no data (market closed)", flush=True)
+        except Exception as e:
+            print(f"[auto-floorsheet] error: {e}", flush=True)
+        time.sleep(1800)  # retry every 30 minutes
+
+
+threading.Thread(target=_auto_floorsheet_loop, daemon=True).start()
+
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    app.run(debug=True, use_reloader=False, host="0.0.0.0", port=8000)
