@@ -517,5 +517,99 @@ def getSecurityList():
     return response
 
 
+# ── Floorsheet summary (accumulation / distribution) ──────────────────────────
+_fs_cache = {"data": None, "ts": 0}
+_FS_TTL   = 600  # 10 minutes
+
+
+@app.route("/floorsheet/summary")
+def getFloorsheetSummary():
+    try:
+        now = time.time()
+        if _fs_cache["data"] and now - _fs_cache["ts"] < _FS_TTL:
+            resp = flask.jsonify(_fs_cache["data"])
+            resp.headers.add("Access-Control-Allow-Origin", "*")
+            return resp
+
+        base_url = nepse.api_end_points["floor_sheet"]
+        url = f"{base_url}?size=500&sort=contractId,desc"
+
+        first = nepse.requestPOSTAPI(url=url, payload_generator=nepse.getPOSTPayloadIDForFloorSheet)
+        if not first or "floorsheets" not in first:
+            raise ValueError("empty response")
+
+        rows      = list(first["floorsheets"]["content"])
+        total_pages = first["floorsheets"]["totalPages"]
+
+        # Fetch ALL pages for complete accuracy (cached for 10 min)
+        for page in range(1, total_pages):
+            try:
+                nxt = nepse.requestPOSTAPI(
+                    url=f"{url}&page={page}",
+                    payload_generator=nepse.getPOSTPayloadIDForFloorSheet,
+                )
+                rows.extend(nxt["floorsheets"]["content"])
+            except Exception:
+                break
+
+        # Aggregate per (symbol, broker) pair — same stock can appear
+        # multiple times if different brokers are buying/selling it
+        buy_pairs  = {}   # {(symbol, broker): qty}
+        sell_pairs = {}
+        buy_amt    = {}
+        sell_amt   = {}
+
+        for row in rows:
+            sym    = row.get("stockSymbol", "")
+            buyer  = str(row.get("buyerMemberId", ""))
+            seller = str(row.get("sellerMemberId", ""))
+            qty    = row.get("contractQuantity", 0) or 0
+            amt    = row.get("contractAmount", 0) or 0
+
+            if not sym:
+                continue
+
+            bk = (sym, buyer)
+            buy_pairs[bk]  = buy_pairs.get(bk,  0) + qty
+            buy_amt[bk]    = buy_amt.get(bk,    0) + amt
+
+            sk = (sym, seller)
+            sell_pairs[sk] = sell_pairs.get(sk, 0) + qty
+            sell_amt[sk]   = sell_amt.get(sk,   0) + amt
+
+        def build_rows(pair_qty, pair_amt):
+            out = []
+            for (sym, broker), qty in pair_qty.items():
+                total_amt = pair_amt.get((sym, broker), 0)
+                avg_rate  = round(total_amt / qty, 2) if qty else 0
+                out.append({
+                    "symbol":   sym,
+                    "totalQty": qty,
+                    "broker":   broker,
+                    "totalAmt": round(total_amt, 2),
+                    "avgRate":  avg_rate,
+                })
+            out.sort(key=lambda x: x["totalQty"], reverse=True)
+            return out[:50]
+
+        result = {
+            "accumulation": build_rows(buy_pairs,  buy_amt),
+            "distribution": build_rows(sell_pairs, sell_amt),
+            "totalRows":    len(rows),
+        }
+
+        _fs_cache["data"] = result
+        _fs_cache["ts"]   = now
+
+        resp = flask.jsonify(result)
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+
+    except Exception as e:
+        resp = flask.jsonify({"error": str(e), "accumulation": [], "distribution": [], "totalRows": 0})
+        resp.headers.add("Access-Control-Allow-Origin", "*")
+        return resp
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)

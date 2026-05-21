@@ -604,6 +604,8 @@
     .sig-badge.buy-press { background: rgba(34,197,94,.15);  color: #4ade80; }
     .sig-badge.sell-press{ background: rgba(239,68,68,.15);  color: #f87171; }
     .sig-badge.momentum  { background: rgba(20,184,166,.2);  color: #2dd4bf; }
+    .sig-badge.ad-accum  { background: rgba(45,212,191,.2);  color: #2dd4bf; }
+    .sig-badge.ad-dist   { background: rgba(248,113,113,.2); color: #f87171; }
 
     .sig-stat-card {
       flex: 1; min-width: 120px; padding: 14px 18px; border-radius: 10px;
@@ -1129,6 +1131,15 @@
       </div>
       <div style="padding:12px 16px;height:130px;position:relative"><canvas id="rsiChart"></canvas></div>
     </div>
+
+    <!-- A/D Line -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:#2dd4bf"></div>Accumulation / Distribution</div>
+        <span id="adSignalLabel" style="font-size:12px;color:var(--muted)">Rising = accumulation · Falling = distribution</span>
+      </div>
+      <div style="padding:12px 16px;height:130px;position:relative"><canvas id="adChart"></canvas></div>
+    </div>
   </div>
 
   <div id="chartEmpty" class="no-data" style="padding:80px">Search a stock above to view its chart</div>
@@ -1251,6 +1262,41 @@
     <div id="sigTable" style="overflow-x:auto">
       <div style="padding:48px;text-align:center;color:var(--muted)">
         Press <strong>⚡ Run Deep Scan</strong> to analyse all stocks
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Accumulation / Distribution Market View ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title"><div class="dot" style="background:#2dd4bf"></div>Accumulation &amp; Distribution — Today's Floorsheet</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="adLoadStatus" style="font-size:12px;color:var(--muted)">—</span>
+        <input id="adSymFilter" type="text" placeholder="Filter symbol…" oninput="renderADTables()"
+          style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;width:130px">
+        <select id="adSectorFilter" onchange="renderADTables()"
+          style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px">
+          <option value="">All Sectors</option>
+        </select>
+        <button class="refresh-btn" onclick="loadADMarket()">↺ Refresh</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;min-width:0">
+      <!-- Accumulation -->
+      <div style="border-right:1px solid var(--border)">
+        <div style="padding:12px 16px;background:rgba(34,197,94,0.08);border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;color:#4ade80;font-size:14px">▲ Accumulation</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:8px">Top broker buying each stock</span>
+        </div>
+        <div id="adAccumTable" style="overflow-x:auto"></div>
+      </div>
+      <!-- Distribution -->
+      <div>
+        <div style="padding:12px 16px;background:rgba(239,68,68,0.08);border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;color:#f87171;font-size:14px">▼ Distribution</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:8px">Top broker selling each stock</span>
+        </div>
+        <div id="adDistTable" style="overflow-x:auto"></div>
       </div>
     </div>
   </div>
@@ -1481,7 +1527,7 @@
   let lwChart = null, lwArea = null, lwCandle = null, lwHLHigh = null, lwHLLow = null;
   let lwMA20 = null, lwMA50 = null, lwMA200 = null;
   let lwSRLines = [];
-  let volChartInst = null, rsiChartInst = null;
+  let volChartInst = null, rsiChartInst = null, adChartInst = null;
   let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false };
   let chartMode = 'candle'; // 'candle' | 'area'
   let currentChartSymbol = null;
@@ -1508,6 +1554,7 @@
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
     if(view === 'screener') { populateSectorFilter(); applyScreener(); }
+    if(view === 'signals' && !adData.accumulation.length) loadADMarket();
   }
 
   // ── Theme ─────────────────────────────────────────
@@ -2039,6 +2086,18 @@
     return rsi;
   }
 
+  function calcAD(highs, lows, closes, volumes) {
+    const ad = [];
+    let cumulative = 0;
+    for(let i = 0; i < closes.length; i++) {
+      const hl = highs[i] - lows[i];
+      const mfm = hl === 0 ? 0 : ((closes[i] - lows[i]) - (highs[i] - closes[i])) / hl;
+      cumulative += mfm * volumes[i];
+      ad.push(cumulative);
+    }
+    return ad;
+  }
+
   function getLWTheme() {
     const light = document.documentElement.classList.contains('light');
     return {
@@ -2230,6 +2289,58 @@
         }
       });
 
+      // ── A/D Line (Chart.js) ──
+      if(adChartInst) adChartInst.destroy();
+      const adVals = calcAD(highs, lows, closes, volumes);
+
+      // Determine trend: compare last 10 bars avg vs prior 10 bars avg
+      const adSlice = adVals.slice(-20);
+      const adRecent = adSlice.slice(10).reduce((s,v)=>s+v,0) / 10;
+      const adPrior  = adSlice.slice(0,10).reduce((s,v)=>s+v,0) / 10;
+      const adTrend  = adRecent > adPrior ? 'accumulation' : 'distribution';
+      const adColor  = adTrend === 'accumulation' ? '#2dd4bf' : '#f87171';
+
+      // Divergence: A/D trend opposite to price trend
+      const priceRecent = closes.slice(-10).reduce((s,v)=>s+v,0)/10;
+      const pricePrior  = closes.slice(-20,-10).reduce((s,v)=>s+v,0)/10;
+      const priceTrend  = priceRecent > pricePrior ? 'up' : 'down';
+      const divergence  = (adTrend==='accumulation' && priceTrend==='down') ? '⚠ Bullish divergence — smart money buying'
+                        : (adTrend==='distribution'  && priceTrend==='up')   ? '⚠ Bearish divergence — smart money selling'
+                        : `Trend: ${adTrend}`;
+      document.getElementById('adSignalLabel').textContent = divergence;
+      document.getElementById('adSignalLabel').style.color =
+        divergence.includes('Bullish') ? '#4ade80' :
+        divergence.includes('Bearish') ? '#f87171' : 'var(--muted)';
+
+      adChartInst = new Chart(document.getElementById('adChart').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [{
+            label: 'A/D',
+            data: adVals,
+            borderColor: adColor,
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3,
+            fill: true,
+            backgroundColor: adTrend === 'accumulation'
+              ? 'rgba(45,212,191,0.08)' : 'rgba(248,113,113,0.08)',
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => ` A/D: ${(c.raw/1e6).toFixed(2)}M` } }
+          },
+          scales: {
+            x: { display: false },
+            y: { ticks: { color:'#64748b', font:{size:9}, callback: v => (v/1e6).toFixed(1)+'M' }, grid: { color:'#1a2030' } }
+          }
+        }
+      });
+
     } catch(e) {
       document.getElementById('chartEmpty').textContent = `Error loading chart: ${e.message}`;
       document.getElementById('chartEmpty').style.display = '';
@@ -2371,6 +2482,8 @@
     'buy-press':  { label: 'Buy Pressure',    cls: 'buy-press',  bullish: true  },
     'sell-press': { label: 'Sell Pressure',   cls: 'sell-press', bullish: false },
     'momentum':   { label: 'Momentum',        cls: 'momentum',   bullish: true  },
+    'ad-accum':   { label: 'AD Accumulation', cls: 'ad-accum',   bullish: true  },
+    'ad-dist':    { label: 'AD Distribution', cls: 'ad-dist',    bullish: false },
   };
 
   function setSigFilter(f, btn) {
@@ -2454,6 +2567,17 @@
           // Momentum: price above MA20 and MA20 above MA50
           if(ma20[n-1] && ma50[n-1] && ltp > ma20[n-1] && ma20[n-1] > ma50[n-1])
             signals.push('momentum');
+
+          // Accumulation / Distribution divergence
+          if(volumes.length >= 20) {
+            const ad = calcAD(highs, lows, closes, volumes);
+            const adRecent = ad.slice(-10).reduce((s,v)=>s+v,0)/10;
+            const adPrior  = ad.slice(-20,-10).reduce((s,v)=>s+v,0)/10;
+            const priceRecent = closes.slice(-10).reduce((s,v)=>s+v,0)/10;
+            const pricePrior  = closes.slice(-20,-10).reduce((s,v)=>s+v,0)/10;
+            if(adRecent > adPrior && priceRecent < pricePrior) signals.push('ad-accum');
+            if(adRecent < adPrior && priceRecent > pricePrior) signals.push('ad-dist');
+          }
 
           // Merge with quick signals already found
           const existing = sigResults.find(r => r.symbol === s.symbol);
@@ -2549,6 +2673,89 @@
     const chartTab = document.querySelector('.nav-tab[onclick*="charts"]');
     showView('charts', chartTab);
     selectChartSymbol(symbol);
+  }
+
+  // ══════════════════════════════════════════════════
+  // ACCUMULATION / DISTRIBUTION MARKET VIEW
+  // ══════════════════════════════════════════════════
+
+  let adData = { accumulation: [], distribution: [] };
+
+  async function loadADMarket() {
+    document.getElementById('adLoadStatus').textContent = 'Loading floorsheet…';
+    document.getElementById('adAccumTable').innerHTML = adLoadingHTML();
+    document.getElementById('adDistTable').innerHTML  = adLoadingHTML();
+    try {
+      const data = await apiFetch('/floorsheet/summary');
+      adData = data;
+      document.getElementById('adLoadStatus').textContent =
+        `${data.totalRows?.toLocaleString() || '—'} trades analysed`;
+      populateADSectorFilter();
+      renderADTables();
+    } catch(e) {
+      document.getElementById('adLoadStatus').textContent = 'Failed — market may be closed';
+      document.getElementById('adAccumTable').innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted)">No data available</div>`;
+      document.getElementById('adDistTable').innerHTML  = `<div style="padding:24px;text-align:center;color:var(--muted)">No data available</div>`;
+    }
+  }
+
+  function adLoadingHTML() {
+    return `<div style="padding:24px;text-align:center;color:var(--muted)">Loading…</div>`;
+  }
+
+  function populateADSectorFilter() {
+    const sel = document.getElementById('adSectorFilter');
+    if(sel.options.length > 1) return;
+    const sectors = [...new Set(Object.values(companyMap).map(c => c.sectorName).filter(Boolean))].sort();
+    sectors.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+  }
+
+  function renderADTables() {
+    const symQ    = document.getElementById('adSymFilter').value.trim().toUpperCase();
+    const sector  = document.getElementById('adSectorFilter').value;
+
+    const filter = (rows) => rows.filter(r => {
+      if(symQ   && !r.symbol.includes(symQ)) return false;
+      if(sector && companyMap[r.symbol]?.sectorName !== sector) return false;
+      return true;
+    });
+
+    document.getElementById('adAccumTable').innerHTML = adTableHTML(filter(adData.accumulation), 'buy');
+    document.getElementById('adDistTable').innerHTML  = adTableHTML(filter(adData.distribution), 'sell');
+  }
+
+  function adTableHTML(rows, side) {
+    if(!rows.length) return `<div style="padding:24px;text-align:center;color:var(--muted)">No results</div>`;
+    const brokerLabel = side === 'buy' ? 'Buyer' : 'Seller';
+    const qtyColor    = side === 'buy' ? '#4ade80' : '#f87171';
+    return `<table class="stocks-table" style="width:100%">
+      <thead><tr>
+        <th style="width:32px;color:var(--muted)">#</th>
+        <th>Symbol</th>
+        <th>${brokerLabel}</th>
+        <th class="right">Tot Qty</th>
+        <th class="right">Tot Amt</th>
+        <th class="right">Avg Rate</th>
+      </tr></thead>
+      <tbody>
+        ${rows.slice(0,50).map((r,i) => `
+          <tr class="sig-row" onclick="selectSigStock('${r.symbol}')">
+            <td style="color:var(--muted);font-size:11px">${i+1}</td>
+            <td><span class="symbol-badge">${r.symbol}</span></td>
+            <td><span style="background:var(--surface2);padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700">${r.broker}</span></td>
+            <td class="right" style="color:${qtyColor};font-weight:700">${fmtQty(r.totalQty)}</td>
+            <td class="right" style="font-size:12px">${fmtCrore(r.totalAmt)}</td>
+            <td class="right">Rs ${fmt(r.avgRate)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  function fmtQty(n) {
+    if(!n) return '—';
+    if(n >= 100000) return (n/100000).toFixed(2) + ' Lac';
+    if(n >= 1000)   return (n/1000).toFixed(2) + 'K';
+    return n.toString();
   }
 
   // ══════════════════════════════════════════════════
