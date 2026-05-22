@@ -649,6 +649,10 @@
     .chart-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .chart-toggle:hover:not(.active) { background: var(--border); }
 
+    /* ── AI cursor blink ── */
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .ai-cursor { animation: blink 1s step-end infinite; }
+
     /* ── Chart search dropdown ── */
     .chart-dd {
       position: absolute;
@@ -856,6 +860,7 @@
     <button class="nav-tab" onclick="showView('signals', this)">⚡ Signals</button>
     <button class="nav-tab" onclick="showView('brokers', this)">🏦 Brokers</button>
     <button class="nav-tab" onclick="showView('portfolio', this)">💼 Portfolio</button>
+    <button class="nav-tab" onclick="showView('ai', this)">🤖 AI Reports</button>
   </div>
 
   <div class="header-right">
@@ -1446,6 +1451,51 @@
   </div>
 </main>
 
+<!-- ══════════════ AI REPORTS VIEW ══════════════ -->
+<main id="aiView" style="display:none">
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title"><div class="dot" style="background:#8b5cf6"></div>AI Stock Reports</div>
+      <span style="font-size:12px;color:var(--muted)">Powered by Claude AI · NEPSE market analysis</span>
+    </div>
+
+    <!-- Report type selector -->
+    <div style="padding:16px 20px;border-top:1px solid var(--border)">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="ai-type-btn chart-toggle active" data-type="market_summary" onclick="selectAIType('market_summary',this)">📊 Market Summary</button>
+        <button class="ai-type-btn chart-toggle" data-type="top_movers" onclick="selectAIType('top_movers',this)">📈 Top Movers</button>
+        <button class="ai-type-btn chart-toggle" data-type="broker_analysis" onclick="selectAIType('broker_analysis',this)">🏦 Broker Intelligence</button>
+        <button class="ai-type-btn chart-toggle" data-type="stock_analysis" onclick="selectAIType('stock_analysis',this)">🔍 Stock Analysis</button>
+      </div>
+
+      <!-- Symbol input (only shown for stock_analysis) -->
+      <div id="aiSymbolRow" style="display:none;margin-bottom:14px">
+        <input type="text" id="aiSymbolInput" placeholder="Enter stock symbol e.g. NABIL, SBCF…"
+          style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;width:260px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+
+      <button id="aiGenerateBtn" class="refresh-btn" style="padding:10px 24px;font-size:14px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600" onclick="generateAIReport()">
+        ✨ Generate Report
+      </button>
+    </div>
+  </div>
+
+  <!-- Report output -->
+  <div class="panel" id="aiReportPanel" style="display:none">
+    <div class="panel-header">
+      <div class="panel-title" id="aiReportTitle">Report</div>
+      <span id="aiReportMeta" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+    <div id="aiReportContent" style="padding:20px 24px;line-height:1.75;font-size:14px;color:var(--text)"></div>
+  </div>
+
+  <!-- Error box -->
+  <div id="aiErrorBox" style="display:none;padding:16px 20px;background:#ef444420;border:1px solid #ef4444;border-radius:10px;color:#f87171;font-size:13px;margin-top:0"></div>
+
+</main>
+
 <!-- ══════════════ DEPTH / ORDER BOOK MODAL ══════════════ -->
 <div class="modal-backdrop" id="depthModal" onclick="closeDepthModal(event)">
   <div class="modal wide">
@@ -1596,7 +1646,7 @@
 
   // ── View switching ────────────────────────────────
   function showView(view, el) {
-    ['market','charts','screener','signals','brokers','portfolio'].forEach(v =>
+    ['market','charts','screener','signals','brokers','portfolio','ai'].forEach(v =>
       document.getElementById(v+'View').style.display = v===view ? '' : 'none');
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
@@ -3428,6 +3478,123 @@
       New total: <strong>${newQty} shares</strong><br>
       ${newAvg!=null?`New avg buy price: <strong>Rs ${fmt(newAvg)}</strong>`:''}
     `;
+  }
+
+  // ── AI Reports ────────────────────────────────────────────────────────
+  let aiReportType = 'market_summary';
+
+  const AI_REPORT_TITLES = {
+    market_summary:  '📊 Daily Market Summary',
+    top_movers:      '📈 Top Movers Analysis',
+    broker_analysis: '🏦 Broker Intelligence Report',
+    stock_analysis:  '🔍 Stock Analysis',
+  };
+
+  function selectAIType(type, el) {
+    aiReportType = type;
+    document.querySelectorAll('.ai-type-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('aiSymbolRow').style.display = type === 'stock_analysis' ? 'block' : 'none';
+  }
+
+  function _renderMarkdown(md) {
+    return md
+      .replace(/^### (.+)$/gm, '<h4 style="margin:14px 0 4px;color:var(--accent)">$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3 style="margin:16px 0 6px;color:var(--accent)">$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2 style="margin:16px 0 8px">$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)$/gm, '<li style="margin:3px 0">$1</li>')
+      .replace(/(<li.*<\/li>\n?)+/g, s => `<ul style="margin:6px 0 6px 18px">${s}</ul>`)
+      .replace(/\n{2,}/g, '</p><p style="margin:8px 0">')
+      .replace(/^(?!<[hul])(.+)$/gm, '$1');
+  }
+
+  async function generateAIReport() {
+    const btn = document.getElementById('aiGenerateBtn');
+    const panel = document.getElementById('aiReportPanel');
+    const content = document.getElementById('aiReportContent');
+    const errBox = document.getElementById('aiErrorBox');
+    const titleEl = document.getElementById('aiReportTitle');
+    const metaEl = document.getElementById('aiReportMeta');
+
+    let symbol = '';
+    if (aiReportType === 'stock_analysis') {
+      symbol = (document.getElementById('aiSymbolInput').value || '').trim().toUpperCase();
+      if (!symbol) {
+        errBox.textContent = 'Please enter a stock symbol for stock analysis.';
+        errBox.style.display = 'block';
+        setTimeout(() => errBox.style.display='none', 3000);
+        return;
+      }
+    }
+
+    // Reset UI
+    errBox.style.display = 'none';
+    panel.style.display = '';
+    content.innerHTML = '<span style="color:var(--muted);font-style:italic">Generating analysis…<span class="ai-cursor">▌</span></span>';
+    titleEl.textContent = AI_REPORT_TITLES[aiReportType] + (symbol ? ` — ${symbol}` : '');
+    metaEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating…';
+
+    const startTime = Date.now();
+    let fullText = '';
+
+    try {
+      const res = await fetch(`${API}/ai/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: aiReportType, symbol }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Server error' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      content.innerHTML = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.text) {
+              fullText += parsed.text;
+              content.innerHTML = `<p style="margin:0">${_renderMarkdown(fullText)}</p><span class="ai-cursor">▌</span>`;
+              content.scrollIntoView({ block: 'nearest' });
+            }
+          } catch (e) {
+            if (e.message !== 'Unexpected end of JSON input') throw e;
+          }
+        }
+      }
+
+      // Remove cursor, show final
+      content.innerHTML = `<p style="margin:0">${_renderMarkdown(fullText)}</p>`;
+      const secs = ((Date.now() - startTime) / 1000).toFixed(1);
+      metaEl.textContent = `Generated in ${secs}s · ${new Date().toLocaleTimeString()}`;
+
+    } catch (err) {
+      panel.style.display = 'none';
+      errBox.textContent = `Error: ${err.message}`;
+      errBox.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ Generate Report';
+    }
   }
 
   function calcSell() {

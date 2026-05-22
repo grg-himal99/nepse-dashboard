@@ -9,7 +9,7 @@ from datetime import date as _date, timedelta
 from json import JSONDecodeError
 
 import flask
-from flask import Flask, request
+from flask import Flask, request, Response, stream_with_context
 
 try:
     from nepse import Nepse
@@ -793,6 +793,170 @@ def _auto_floorsheet_loop():
 
 
 threading.Thread(target=_auto_floorsheet_loop, daemon=True).start()
+
+
+# ── AI Stock Reports (Claude API) ─────────────────────────────────────────────
+
+def _collect_report_data(report_type, symbol=""):
+    """Gather relevant market data for the requested report type."""
+    data = {}
+
+    summary = _getSummary()
+    if summary:
+        data["market_summary"] = summary
+
+    indices = _getNepseIndex()
+    if indices:
+        nepse = indices.get("NEPSE Index") or next(iter(indices.values()), None)
+        if nepse:
+            data["nepse_index"] = {
+                "current": nepse.get("currentValue"),
+                "change": nepse.get("change"),
+                "pct_change": nepse.get("perChange"),
+            }
+
+    if report_type in ("market_summary", "top_movers"):
+        gainers = _get("topGainers") or []
+        losers  = _get("topLosers")  or []
+        data["top_gainers"] = [
+            {"symbol": g.get("symbol"), "ltp": g.get("ltp"), "pct": g.get("percentageChange")}
+            for g in gainers[:10]
+        ]
+        data["top_losers"] = [
+            {"symbol": l.get("symbol"), "ltp": l.get("ltp"), "pct": l.get("percentageChange")}
+            for l in losers[:10]
+        ]
+        top_trade = _get("topTenTrade") or []
+        data["top_traded"] = [{"symbol": s.get("symbol"), "shares": s.get("shareTraded")} for s in top_trade[:10]]
+
+    if report_type == "broker_analysis":
+        broker_live = _broker_live.get("data") or {}
+        if broker_live:
+            broker_list = _broker_data_to_list(broker_live)
+            broker_list.sort(key=lambda x: x["netQty"], reverse=True)
+            data["top_buyers"]  = [b for b in broker_list if b["netQty"] > 0][:10]
+            data["top_sellers"] = [b for b in reversed(broker_list) if b["netQty"] < 0][:10]
+
+    if report_type == "stock_analysis" and symbol:
+        live = _get("liveMarket") or []
+        stock = next((s for s in live if s.get("symbol","").upper() == symbol.upper()), None)
+        if stock:
+            data["stock"] = {
+                "symbol":  stock.get("symbol"),
+                "ltp":     stock.get("ltp"),
+                "open":    stock.get("openPrice"),
+                "high":    stock.get("highPrice"),
+                "low":     stock.get("lowPrice"),
+                "volume":  stock.get("totalTradeQuantity"),
+                "pct":     stock.get("percentageChange"),
+                "turnover":stock.get("totalTradeValue"),
+            }
+
+    return data
+
+
+def _build_report_prompt(report_type, symbol, data):
+    today = _date.today().strftime("%B %d, %Y")
+    ctx   = json.dumps(data, indent=2)
+
+    if report_type == "market_summary":
+        return (
+            f"Today is {today}. Below is live data from the Nepal Stock Exchange (NEPSE):\n\n{ctx}\n\n"
+            "Write a concise Daily Market Summary for NEPSE investors. Include:\n"
+            "1. Overall market direction and NEPSE index movement\n"
+            "2. Sector highlights (if data available)\n"
+            "3. Notable gainers and losers with brief reasons\n"
+            "4. Trading activity (volume/turnover trend)\n"
+            "5. Key takeaways for retail investors\n"
+            "Use plain language. Format with markdown headers. Keep it under 400 words."
+        )
+    elif report_type == "top_movers":
+        return (
+            f"Today is {today}. Below is NEPSE top movers data:\n\n{ctx}\n\n"
+            "Analyze today's top gainers and losers on NEPSE. For each group:\n"
+            "- Identify any sector patterns among the movers\n"
+            "- Highlight the most significant moves and possible catalysts\n"
+            "- Note any stocks showing unusual volume\n"
+            "- Suggest what investors should watch\n"
+            "Use markdown. Keep under 350 words."
+        )
+    elif report_type == "broker_analysis":
+        return (
+            f"Today is {today}. Below is NEPSE broker net position data (broker ID, buy qty, sell qty, net qty):\n\n{ctx}\n\n"
+            "Analyze institutional broker activity on NEPSE:\n"
+            "- Which brokers are aggressively buying vs selling?\n"
+            "- What does this broker positioning signal for market direction?\n"
+            "- Are there any concentration risks or dominant players?\n"
+            "- What should retail investors infer from this pattern?\n"
+            "Use markdown. Keep under 350 words."
+        )
+    elif report_type == "stock_analysis":
+        return (
+            f"Today is {today}. Below is data for {symbol} on NEPSE:\n\n{ctx}\n\n"
+            f"Provide a brief technical/fundamental analysis of {symbol}:\n"
+            "- Today's price action (open, high, low, close) and what it signals\n"
+            "- Volume analysis — is this above or below typical?\n"
+            "- Key support/resistance levels based on today's range\n"
+            "- Short-term outlook and what to watch\n"
+            "Use markdown. Keep under 300 words."
+        )
+    return f"Analyze this NEPSE market data and provide insights:\n\n{ctx}"
+
+
+@app.route("/ai/report", methods=["POST", "OPTIONS"])
+def getAIReport():
+    if request.method == "OPTIONS":
+        resp = Response("", status=200)
+        resp.headers["Access-Control-Allow-Origin"]  = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return resp
+
+    body        = request.json or {}
+    report_type = body.get("type", "market_summary")
+    symbol      = body.get("symbol", "").upper().strip()
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        resp = flask.jsonify({"error": "ANTHROPIC_API_KEY not set on server. Add it to your environment and restart."})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 500
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=api_key)
+    except ImportError:
+        resp = flask.jsonify({"error": "anthropic package not installed. Run: pip install anthropic"})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 500
+
+    market_data = _collect_report_data(report_type, symbol)
+    prompt      = _build_report_prompt(report_type, symbol, market_data)
+
+    def generate():
+        try:
+            with client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=(
+                    "You are an expert NEPSE (Nepal Stock Exchange) market analyst with deep knowledge of "
+                    "Nepali financial markets, listed companies, and investor behaviour. "
+                    "Provide insightful, actionable analysis. Use Rs for currency. "
+                    "Be direct and specific. Never make up data — only analyse what is provided."
+                ),
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+    response.headers["Cache-Control"]       = "no-cache"
+    response.headers["X-Accel-Buffering"]   = "no"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 
 if __name__ == "__main__":
