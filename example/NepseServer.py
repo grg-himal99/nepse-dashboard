@@ -887,12 +887,12 @@ def _collect_report_data(report_type, symbol=""):
 
     indices = _getNepseIndex()
     if indices:
-        nepse = indices.get("NEPSE Index") or next(iter(indices.values()), None)
-        if nepse:
+        idx = indices.get("NEPSE Index") or next(iter(indices.values()), None)
+        if idx:
             data["nepse_index"] = {
-                "current": nepse.get("currentValue"),
-                "change": nepse.get("change"),
-                "pct_change": nepse.get("perChange"),
+                "current": idx.get("currentValue"),
+                "change": idx.get("change"),
+                "pct_change": idx.get("perChange"),
             }
 
     if report_type in ("market_summary", "top_movers"):
@@ -933,11 +933,12 @@ def _collect_report_data(report_type, symbol=""):
                 "turnover":   stock.get("totalTradeValue"),
             }
 
-        # Historical price/volume — last 30 trading days
+        # Historical price/volume — last 30 trading days (via internal chart route)
         try:
-            hist = nepse.getCompanyPriceVolumeHistory(symbol)
-            content = hist.get("content", []) if isinstance(hist, dict) else (hist or [])
-            content = list(reversed(content))[-30:]  # last 30 days, oldest first
+            hist_raw = nepse.getCompanyPriceVolumeHistory(symbol)
+            content  = hist_raw.get("content", []) if isinstance(hist_raw, dict) else (hist_raw or [])
+            content  = [r for r in content if r.get("closePrice")]
+            content  = list(reversed(content))[-30:]
             data["price_history"] = [
                 {
                     "date":   r.get("businessDate"),
@@ -947,8 +948,19 @@ def _collect_report_data(report_type, symbol=""):
                     "volume": r.get("totalTradedQuantity"),
                     "trades": r.get("totalTrades"),
                 }
-                for r in content if r.get("closePrice")
+                for r in content
             ]
+            if data["price_history"]:
+                closes = [r["close"] for r in data["price_history"]]
+                data["price_stats"] = {
+                    "days":       len(closes),
+                    "latest":     closes[-1],
+                    "30d_high":   max(r["high"] for r in data["price_history"]),
+                    "30d_low":    min(r["low"]  for r in data["price_history"]),
+                    "avg_volume": round(sum(r["volume"] or 0 for r in data["price_history"]) / len(closes)),
+                    "trend":      "UP" if closes[-1] > closes[0] else "DOWN",
+                    "pct_30d":    round((closes[-1] - closes[0]) / closes[0] * 100, 2) if closes[0] else 0,
+                }
         except Exception as e:
             print(f"[ai/report] price history error for {symbol}: {e}")
 
@@ -992,14 +1004,14 @@ def _build_report_prompt(report_type, symbol, data):
         )
     elif report_type == "stock_analysis":
         return (
-            f"Today is {today}. Below is data for {symbol} on NEPSE, including 30 days of price history:\n\n{ctx}\n\n"
-            f"Provide a technical analysis of {symbol} using the actual data above:\n"
-            "- Recent price trend: is it uptrend, downtrend, or sideways? Use specific prices.\n"
-            "- Key support and resistance levels derived from the price history\n"
-            "- Volume trend: is volume increasing or decreasing on up/down days?\n"
-            "- Today's or most recent session's price action\n"
-            "- Short-term outlook (1-2 weeks) with specific price levels to watch\n"
-            "Always reference actual numbers from the data. Use markdown. Keep under 350 words."
+            f"Today is {today}. Below is real market data for {symbol} on NEPSE:\n\n{ctx}\n\n"
+            f"Write a technical analysis of {symbol} using ONLY the numbers from the data above. Include:\n"
+            f"- **30-day trend**: Use price_stats.trend and pct_30d. Quote actual open/close prices.\n"
+            f"- **Support & Resistance**: Derive from 30d_high, 30d_low, and recent price_history closes.\n"
+            f"- **Volume analysis**: Compare recent volume to avg_volume. Is smart money buying or selling?\n"
+            f"- **Most recent session**: Quote the last row in price_history (high, low, close, volume).\n"
+            f"- **Outlook**: Give a specific price range to watch for the next 1-2 weeks.\n"
+            "Never say data is missing — it is all in the JSON above. Use markdown. Under 350 words."
         )
     return f"Analyze this NEPSE market data and provide insights:\n\n{ctx}"
 
