@@ -916,37 +916,38 @@ def getAIReport():
     report_type = body.get("type", "market_summary")
     symbol      = body.get("symbol", "").upper().strip()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        resp = flask.jsonify({"error": "ANTHROPIC_API_KEY not set on server. Add it to your environment and restart."})
+        resp = flask.jsonify({"error": "GEMINI_API_KEY not set. Get a free key at aistudio.google.com, then: export GEMINI_API_KEY=your-key"})
         resp.headers["Access-Control-Allow-Origin"] = "*"
         return resp, 500
 
     try:
-        import anthropic as _anthropic
-        client = _anthropic.Anthropic(api_key=api_key)
+        from google import genai as _genai
     except ImportError:
-        resp = flask.jsonify({"error": "anthropic package not installed. Run: pip install anthropic"})
+        resp = flask.jsonify({"error": "google-genai not installed. Run: pip3 install google-genai"})
         resp.headers["Access-Control-Allow-Origin"] = "*"
         return resp, 500
 
     market_data = _collect_report_data(report_type, symbol)
-    prompt      = _build_report_prompt(report_type, symbol, market_data)
+    system_prompt = (
+        "You are an expert NEPSE (Nepal Stock Exchange) market analyst with deep knowledge of "
+        "Nepali financial markets, listed companies, and investor behaviour. "
+        "Provide insightful, actionable analysis. Use Rs for currency. "
+        "Be direct and specific. Never make up data — only analyse what is provided."
+    )
+    prompt = system_prompt + "\n\n" + _build_report_prompt(report_type, symbol, market_data)
 
     def generate():
         try:
-            with client.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=1024,
-                system=(
-                    "You are an expert NEPSE (Nepal Stock Exchange) market analyst with deep knowledge of "
-                    "Nepali financial markets, listed companies, and investor behaviour. "
-                    "Provide insightful, actionable analysis. Use Rs for currency. "
-                    "Be direct and specific. Never make up data — only analyse what is provided."
-                ),
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                for text in stream.text_stream:
+            client = _genai.Client(api_key=api_key)
+            stream = client.models.generate_content_stream(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            for chunk in stream:
+                text = chunk.text
+                if text:
                     yield f"data: {json.dumps({'text': text})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
