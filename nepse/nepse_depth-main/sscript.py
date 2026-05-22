@@ -1,18 +1,24 @@
 # %%
-from nepse import AsyncNepse 
 import asyncio
+import json
 import os
 from datetime import datetime, timedelta
-import json
+
+from nepse import AsyncNepse
 
 # %%
 nepse = AsyncNepse()
-nepse.setTLSVerification(False)  # Temporary, until NEPSE sorts its SSL certificate problem
+nepse.setTLSVerification(
+    False
+)  # Temporary, until NEPSE sorts its SSL certificate problem
+
 
 async def fetch_market_depth():
     # Fetch the list of companies
     company_list = await nepse.getSecurityList()
-    active_symbols = [company['symbol'] for company in company_list if company['activeStatus'] == 'A']
+    active_symbols = [
+        company["symbol"] for company in company_list if company["activeStatus"] == "A"
+    ]
     tasks = [nepse.getSymbolMarketDepth(symbol) for symbol in active_symbols]
 
     # Fetch market depths concurrently
@@ -29,6 +35,7 @@ async def fetch_market_depth():
         if not isinstance(depth, Exception):  # Check if depth is not an Exception
             symbol_depth_mapping[symbol] = depth  # Add to dictionary
     return symbol_depth_mapping
+
 
 # Define the main function to execute the workflow
 async def main():
@@ -52,7 +59,7 @@ async def main():
 
     # If the file exists, append the new run data
     if os.path.exists(file_path):
-        with open(file_path, 'r+', encoding='utf-8') as f:
+        with open(file_path, "r+", encoding="utf-8") as f:
             try:
                 # Load existing data
                 daily_data = json.load(f)
@@ -68,8 +75,10 @@ async def main():
             f.truncate()
     else:
         # If the file doesn't exist, create it with the new run data
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump([run_data], f, indent=4)
+
+
 asyncio.run(main())
 
 # %%
