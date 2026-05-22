@@ -97,6 +97,9 @@ routes = {
 
 @app.route("/")
 def getIndex():
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../frontend/index.html")
+    if os.path.exists(html_path):
+        return flask.send_file(html_path)
     content = "<BR>".join(
         [f"<a href={value}> {key} </a>" for key, value in routes.items()]
     )
@@ -592,6 +595,83 @@ def _rows_to_broker_data(rows):
 _init_broker_db()
 
 
+# ── Historical floorsheet backfill from GitHub CSV repo ───────────────────────
+_FS_REPO_RAW = "https://raw.githubusercontent.com/madhuko/temp/main/fs/2026/{date}.csv"
+_FS_REPO_API = "https://api.github.com/repos/madhuko/temp/contents/fs/2026"
+
+
+def _db_existing_dates():
+    conn = sqlite3.connect(_BROKER_DB)
+    rows = conn.execute("SELECT DISTINCT business_date FROM broker_daily").fetchall()
+    conn.close()
+    return {r[0] for r in rows}
+
+
+def _parse_csv_to_broker(text):
+    """Parse floorsheet CSV (contract,symbol,buyer,seller,qty,rate,amt) into broker data dict."""
+    import csv, io
+    broker_data = {}
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        buyer  = str(row.get("buyer",  "") or "").strip()
+        seller = str(row.get("seller", "") or "").strip()
+        try:    qty = float(row.get("qty", 0) or 0)
+        except: qty = 0
+        try:    amt = float(row.get("amt", 0) or 0)
+        except: amt = 0
+        if buyer:
+            d = broker_data.setdefault(buyer,  {"buy_qty": 0, "buy_amt": 0.0, "sell_qty": 0, "sell_amt": 0.0})
+            d["buy_qty"] += qty; d["buy_amt"] += amt
+        if seller:
+            d = broker_data.setdefault(seller, {"buy_qty": 0, "buy_amt": 0.0, "sell_qty": 0, "sell_amt": 0.0})
+            d["sell_qty"] += qty; d["sell_amt"] += amt
+    return broker_data
+
+
+def _backfill_from_github():
+    """Download missing daily floorsheet CSVs from GitHub and import into broker DB."""
+    import httpx
+    time.sleep(5)  # let server fully start first
+
+    try:
+        # Get list of available files from GitHub API
+        resp = httpx.get(_FS_REPO_API, timeout=15, headers={"Accept": "application/vnd.github.v3+json"})
+        files = [f["name"].replace(".csv", "") for f in resp.json() if f["name"].endswith(".csv")]
+    except Exception as e:
+        print(f"[backfill] failed to list repo files: {e}")
+        return
+
+    existing = _db_existing_dates()
+    missing  = sorted(d for d in files if d not in existing)
+
+    if not missing:
+        print(f"[backfill] all {len(files)} dates already in DB — nothing to do")
+        return
+
+    print(f"[backfill] importing {len(missing)} missing dates from GitHub…")
+
+    ok = 0
+    for date_str in missing:
+        try:
+            url  = _FS_REPO_RAW.format(date=date_str)
+            resp = httpx.get(url, timeout=30)
+            if resp.status_code != 200:
+                continue
+            broker_data = _parse_csv_to_broker(resp.text)
+            if broker_data:
+                _store_broker_day(date_str, broker_data)
+                ok += 1
+                if ok % 10 == 0:
+                    print(f"[backfill] {ok}/{len(missing)} done…")
+        except Exception as e:
+            print(f"[backfill] error on {date_str}: {e}")
+
+    print(f"[backfill] done — imported {ok}/{len(missing)} dates")
+
+
+threading.Thread(target=_backfill_from_github, daemon=True).start()
+
+
 # ── Floorsheet fetch (shared by A/D view + Broker Summary) ────────────────────
 _fs_cache = {"data": None, "ts": 0}
 _FS_TTL   = 600  # 10 minutes
@@ -838,19 +918,39 @@ def _collect_report_data(report_type, symbol=""):
             data["top_sellers"] = [b for b in reversed(broker_list) if b["netQty"] < 0][:10]
 
     if report_type == "stock_analysis" and symbol:
+        # Today's live market data (available during trading hours)
         live = _get("liveMarket") or []
         stock = next((s for s in live if s.get("symbol","").upper() == symbol.upper()), None)
         if stock:
-            data["stock"] = {
+            data["today"] = {
                 "symbol":  stock.get("symbol"),
                 "ltp":     stock.get("ltp"),
                 "open":    stock.get("openPrice"),
                 "high":    stock.get("highPrice"),
                 "low":     stock.get("lowPrice"),
                 "volume":  stock.get("totalTradeQuantity"),
-                "pct":     stock.get("percentageChange"),
-                "turnover":stock.get("totalTradeValue"),
+                "pct_change": stock.get("percentageChange"),
+                "turnover":   stock.get("totalTradeValue"),
             }
+
+        # Historical price/volume — last 30 trading days
+        try:
+            hist = nepse.getCompanyPriceVolumeHistory(symbol)
+            content = hist.get("content", []) if isinstance(hist, dict) else (hist or [])
+            content = list(reversed(content))[-30:]  # last 30 days, oldest first
+            data["price_history"] = [
+                {
+                    "date":   r.get("businessDate"),
+                    "high":   r.get("highPrice"),
+                    "low":    r.get("lowPrice"),
+                    "close":  r.get("closePrice"),
+                    "volume": r.get("totalTradedQuantity"),
+                    "trades": r.get("totalTrades"),
+                }
+                for r in content if r.get("closePrice")
+            ]
+        except Exception as e:
+            print(f"[ai/report] price history error for {symbol}: {e}")
 
     return data
 
@@ -892,13 +992,14 @@ def _build_report_prompt(report_type, symbol, data):
         )
     elif report_type == "stock_analysis":
         return (
-            f"Today is {today}. Below is data for {symbol} on NEPSE:\n\n{ctx}\n\n"
-            f"Provide a brief technical/fundamental analysis of {symbol}:\n"
-            "- Today's price action (open, high, low, close) and what it signals\n"
-            "- Volume analysis — is this above or below typical?\n"
-            "- Key support/resistance levels based on today's range\n"
-            "- Short-term outlook and what to watch\n"
-            "Use markdown. Keep under 300 words."
+            f"Today is {today}. Below is data for {symbol} on NEPSE, including 30 days of price history:\n\n{ctx}\n\n"
+            f"Provide a technical analysis of {symbol} using the actual data above:\n"
+            "- Recent price trend: is it uptrend, downtrend, or sideways? Use specific prices.\n"
+            "- Key support and resistance levels derived from the price history\n"
+            "- Volume trend: is volume increasing or decreasing on up/down days?\n"
+            "- Today's or most recent session's price action\n"
+            "- Short-term outlook (1-2 weeks) with specific price levels to watch\n"
+            "Always reference actual numbers from the data. Use markdown. Keep under 350 words."
         )
     return f"Analyze this NEPSE market data and provide insights:\n\n{ctx}"
 
@@ -942,7 +1043,7 @@ def getAIReport():
         try:
             client = _genai.Client(api_key=api_key)
             stream = client.models.generate_content_stream(
-                model="gemini-2.0-flash",
+                model="gemini-flash-latest",
                 contents=prompt,
             )
             for chunk in stream:

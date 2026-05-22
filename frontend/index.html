@@ -653,6 +653,16 @@
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .ai-cursor { animation: blink 1s step-end infinite; }
 
+    /* ── AI report type cards ── */
+    .ai-card {
+      display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+      padding:14px 16px;border-radius:10px;border:1px solid #4c1d95;
+      background:#1e1b4b55;color:var(--text);cursor:pointer;text-align:left;
+      transition:background .15s,border-color .15s;
+    }
+    .ai-card:hover { background:#2d1b6988;border-color:#7c3aed; }
+    .ai-card.active { background:#3b0764;border-color:#8b5cf6;box-shadow:0 0 0 1px #8b5cf6; }
+
     /* ── Chart search dropdown ── */
     .chart-dd {
       position: absolute;
@@ -1454,45 +1464,89 @@
 <!-- ══════════════ AI REPORTS VIEW ══════════════ -->
 <main id="aiView" style="display:none">
 
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-title"><div class="dot" style="background:#8b5cf6"></div>AI Stock Reports</div>
-      <span style="font-size:12px;color:var(--muted)">Powered by Claude AI · NEPSE market analysis</span>
+  <!-- Header -->
+  <div class="panel" style="background:linear-gradient(135deg,#1e1b4b 0%,#2d1b69 50%,#1a1035 100%);border-color:#4c1d95">
+    <div style="padding:24px 24px 20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:22px">🤖</span>
+        <span style="font-size:18px;font-weight:700;color:#e9d5ff">AI Stock Reports</span>
+        <span style="font-size:11px;background:#4c1d95;color:#c4b5fd;padding:2px 8px;border-radius:10px;font-weight:600">BETA</span>
+      </div>
+      <p style="margin:0;font-size:13px;color:#a78bfa">Powered by Google Gemini · Live NEPSE data analysis</p>
     </div>
 
-    <!-- Report type selector -->
-    <div style="padding:16px 20px;border-top:1px solid var(--border)">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="ai-type-btn chart-toggle active" data-type="market_summary" onclick="selectAIType('market_summary',this)">📊 Market Summary</button>
-        <button class="ai-type-btn chart-toggle" data-type="top_movers" onclick="selectAIType('top_movers',this)">📈 Top Movers</button>
-        <button class="ai-type-btn chart-toggle" data-type="broker_analysis" onclick="selectAIType('broker_analysis',this)">🏦 Broker Intelligence</button>
-        <button class="ai-type-btn chart-toggle" data-type="stock_analysis" onclick="selectAIType('stock_analysis',this)">🔍 Stock Analysis</button>
-      </div>
-
-      <!-- Symbol input (only shown for stock_analysis) -->
-      <div id="aiSymbolRow" style="display:none;margin-bottom:14px">
-        <input type="text" id="aiSymbolInput" placeholder="Enter stock symbol e.g. NABIL, SBCF…"
-          style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;width:260px;text-transform:uppercase"
-          oninput="this.value=this.value.toUpperCase()">
-      </div>
-
-      <button id="aiGenerateBtn" class="refresh-btn" style="padding:10px 24px;font-size:14px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600" onclick="generateAIReport()">
-        ✨ Generate Report
+    <!-- Report type cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:0 20px 20px">
+      <button class="ai-type-btn ai-card active" data-type="market_summary" onclick="selectAIType('market_summary',this)">
+        <span style="font-size:24px">📊</span>
+        <span style="font-weight:600;font-size:13px">Market Summary</span>
+        <span style="font-size:11px;color:var(--muted)">Daily overview &amp; index</span>
       </button>
+      <button class="ai-type-btn ai-card" data-type="top_movers" onclick="selectAIType('top_movers',this)">
+        <span style="font-size:24px">📈</span>
+        <span style="font-weight:600;font-size:13px">Top Movers</span>
+        <span style="font-size:11px;color:var(--muted)">Gainers &amp; losers analysis</span>
+      </button>
+      <button class="ai-type-btn ai-card" data-type="broker_analysis" onclick="selectAIType('broker_analysis',this)">
+        <span style="font-size:24px">🏦</span>
+        <span style="font-weight:600;font-size:13px">Broker Intelligence</span>
+        <span style="font-size:11px;color:var(--muted)">Institutional positioning</span>
+      </button>
+      <button class="ai-type-btn ai-card" data-type="stock_analysis" onclick="selectAIType('stock_analysis',this)">
+        <span style="font-size:24px">🔍</span>
+        <span style="font-weight:600;font-size:13px">Stock Analysis</span>
+        <span style="font-size:11px;color:var(--muted)">Single stock deep-dive</span>
+      </button>
+    </div>
+
+    <!-- Symbol search (stock_analysis only) -->
+    <div id="aiSymbolRow" style="display:none;padding:0 20px 16px">
+      <div style="position:relative;display:inline-block;width:100%;max-width:380px">
+        <input type="text" id="aiSymbolInput" placeholder="🔍 Search symbol or company name…" autocomplete="off"
+          style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid #6d28d9;background:#1e1b4b;color:#e9d5ff;font-size:13px;box-sizing:border-box;outline:none"
+          oninput="filterAISymbol(this.value)">
+        <div id="aiSymbolDropdown"></div>
+      </div>
+    </div>
+
+    <!-- Generate button -->
+    <div style="padding:0 20px 20px">
+      <button id="aiGenerateBtn"
+        style="padding:12px 32px;font-size:14px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:10px;cursor:pointer;letter-spacing:.3px;box-shadow:0 4px 15px #7c3aed55;transition:opacity .2s"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'"
+        onclick="generateAIReport()">✨ Generate Report</button>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="aiEmptyState" class="panel" style="padding:60px 24px;text-align:center">
+    <div style="font-size:48px;margin-bottom:16px;opacity:.4">🤖</div>
+    <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:8px">Choose a report type above</div>
+    <div style="font-size:13px;color:var(--muted);max-width:380px;margin:0 auto;line-height:1.7">
+      Select a report category, then click <strong>✨ Generate Report</strong> to get an AI-powered analysis of today's live NEPSE data.
+    </div>
+    <div style="display:flex;justify-content:center;gap:24px;margin-top:32px;flex-wrap:wrap">
+      <div style="text-align:center;font-size:12px;color:var(--muted)"><div style="font-size:22px;margin-bottom:4px">📊</div>Index & turnover</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)"><div style="font-size:22px;margin-bottom:4px">📈</div>Gainers & losers</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)"><div style="font-size:22px;margin-bottom:4px">🏦</div>Broker positions</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)"><div style="font-size:22px;margin-bottom:4px">🔍</div>Stock deep-dive</div>
     </div>
   </div>
 
   <!-- Report output -->
   <div class="panel" id="aiReportPanel" style="display:none">
-    <div class="panel-header">
-      <div class="panel-title" id="aiReportTitle">Report</div>
+    <div class="panel-header" style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="aiReportIcon" style="font-size:18px">📊</span>
+        <span class="panel-title" id="aiReportTitle">Report</span>
+      </div>
       <span id="aiReportMeta" style="font-size:12px;color:var(--muted)"></span>
     </div>
-    <div id="aiReportContent" style="padding:20px 24px;line-height:1.75;font-size:14px;color:var(--text)"></div>
+    <div id="aiReportContent" style="padding:24px;line-height:1.85;font-size:14px;color:var(--text);max-width:860px"></div>
   </div>
 
   <!-- Error box -->
-  <div id="aiErrorBox" style="display:none;padding:16px 20px;background:#ef444420;border:1px solid #ef4444;border-radius:10px;color:#f87171;font-size:13px;margin-top:0"></div>
+  <div id="aiErrorBox" style="display:none;padding:16px 20px;background:#ef444420;border:1px solid #ef4444;border-radius:10px;color:#f87171;font-size:13px"></div>
 
 </main>
 
@@ -3490,12 +3544,50 @@
     stock_analysis:  '🔍 Stock Analysis',
   };
 
+  const AI_REPORT_ICONS = {
+    market_summary: '📊', top_movers: '📈', broker_analysis: '🏦', stock_analysis: '🔍',
+  };
+
   function selectAIType(type, el) {
     aiReportType = type;
     document.querySelectorAll('.ai-type-btn').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
     document.getElementById('aiSymbolRow').style.display = type === 'stock_analysis' ? 'block' : 'none';
+    if(type === 'stock_analysis') document.getElementById('aiSymbolInput').focus();
   }
+
+  function filterAISymbol(q) {
+    const inp  = document.getElementById('aiSymbolInput');
+    const drop = document.getElementById('aiSymbolDropdown');
+    if(!q || q.length < 1) { drop.innerHTML = ''; return; }
+    const ql = q.toLowerCase();
+    const matches = allStocks.filter(s =>
+      s.symbol?.toLowerCase().includes(ql) || s.securityName?.toLowerCase().includes(ql)
+    ).slice(0, 10);
+    if(!matches.length) { drop.innerHTML = ''; return; }
+
+    // Position dropdown using fixed coords so panel overflow never clips it
+    const rect = inp.getBoundingClientRect();
+    drop.innerHTML = `<div class="chart-dd" style="position:fixed;top:${rect.bottom+4}px;left:${rect.left}px;width:${rect.width}px;max-width:420px;z-index:9999">
+      ${matches.map(s => {
+        const pct = s.percentageChange ?? 0;
+        return `<div class="chart-dd-item" onmousedown="selectAISymbol('${s.symbol}')">
+          <span><strong>${s.symbol}</strong> <span style="font-size:11px;color:var(--muted)">${s.securityName||''}</span></span>
+          <span class="${changeClass(pct)}" style="font-size:12px">${pct>=0?'+':''}${fmt(pct)}%</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function selectAISymbol(symbol) {
+    document.getElementById('aiSymbolInput').value = symbol;
+    document.getElementById('aiSymbolDropdown').innerHTML = '';
+  }
+
+  document.addEventListener('click', e => {
+    if(!e.target.closest('#aiSymbolInput') && !e.target.closest('#aiSymbolDropdown'))
+      document.getElementById('aiSymbolDropdown').innerHTML = '';
+  });
 
   function _renderMarkdown(md) {
     return md
@@ -3531,9 +3623,11 @@
 
     // Reset UI
     errBox.style.display = 'none';
+    document.getElementById('aiEmptyState').style.display = 'none';
     panel.style.display = '';
     content.innerHTML = '<span style="color:var(--muted);font-style:italic">Generating analysis…<span class="ai-cursor">▌</span></span>';
     titleEl.textContent = AI_REPORT_TITLES[aiReportType] + (symbol ? ` — ${symbol}` : '');
+    document.getElementById('aiReportIcon').textContent = AI_REPORT_ICONS[aiReportType] || '🤖';
     metaEl.textContent = '';
     btn.disabled = true;
     btn.textContent = '⏳ Generating…';
