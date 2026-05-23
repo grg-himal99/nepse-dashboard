@@ -1346,7 +1346,7 @@
       <button class="broker-period-btn chart-toggle"        data-period="1w" onclick="loadBrokerSummary('1w')">1W</button>
       <button class="broker-period-btn chart-toggle"        data-period="2w" onclick="loadBrokerSummary('2w')">2W</button>
       <button class="broker-period-btn chart-toggle"        data-period="1m" onclick="loadBrokerSummary('1m')">1M</button>
-      <input type="text" id="brokerSearchInput" placeholder="🔍 Filter broker #..."
+      <input type="text" id="brokerSearchInput" placeholder="🔍 Search broker name or #..."
         oninput="brokerSearchStr=this.value;renderBrokerTable()"
         style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;width:180px;margin-left:8px">
     </div>
@@ -2904,7 +2904,10 @@
           <tr class="sig-row" onclick="selectSigStock('${r.symbol}')">
             <td style="color:var(--muted);font-size:11px">${i+1}</td>
             <td><span class="symbol-badge">${r.symbol}</span></td>
-            <td><span style="background:var(--surface2);padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700">${r.broker}</span></td>
+            <td>
+              <div style="font-size:12px;font-weight:700">${brokerName(r.broker)}</div>
+              <div style="font-size:10px;color:var(--muted)">#${r.broker}</div>
+            </td>
             <td class="right" style="color:${qtyColor};font-weight:700">${fmtQty(r.totalQty)}</td>
             <td class="right" style="font-size:12px">${fmtCrore(r.totalAmt)}</td>
             <td class="right">Rs ${fmt(r.avgRate)}</td>
@@ -2923,6 +2926,44 @@
   // ══════════════════════════════════════════════════
   // BROKER SUMMARY
   // ══════════════════════════════════════════════════
+
+  const BROKER_NAMES = {
+    1:'Kumari Securities',3:'Arun Securities',4:'Opal Securities',
+    5:'Market Securities',6:'Agrawal Securities',7:'J.F. Securities',
+    8:'Ashutosh Brokerage',10:'Pragyan Securities',11:'Malla & Malla',
+    13:'Thrive Brokerage',14:'Nepal Stock House',16:'Primo Securities',
+    17:'ABC Securities',18:'Sagarmatha Securities',19:'Nepal Investment & Securities',
+    20:'Sipla Securities',21:'Midas Stock Broking',22:'Siprabi Securities',
+    25:'Sweta Securities',26:'Asian Securities',28:'Shree Krishna Securities',
+    29:'Trisul Securities',32:'Premier Securities',33:'Dakshinkali Investment',
+    34:'Vision Securities',35:'Kohinoor Investment',36:'Secured Securities',
+    37:'Swarna Laxmi Securities',38:'Dipshikha Securities',39:'Sumeru Securities',
+    40:'Creative Securities',41:'Linch Stock Market',42:'Sani Securities',
+    43:'South Asian Bulls',44:'Dynamic Money Managers',45:'Imperial Securities',
+    46:'Kalika Securities',47:'Neev Securities',48:'Trishakti Securities',
+    49:'Online Securities',50:'Crystal Kanchanjanga',51:'Oxford Securities',
+    52:'Sundhara Securities',53:'Investment Mgmt Nepal',54:'Sewa Securities',
+    55:'Bhrikuti Stock Broking',56:'Sri Hari Securities',57:'Aryatara Investment',
+    58:'Naasa Securities',59:'Deevyaa Securities',60:'Nagarik Stock Dealer',
+    61:'Bhole Ganesh Securities',62:'Capital Max Securities',63:'Himalayan Brokerage',
+    64:'Sun Securities',65:'Sharepro Securities',66:'Miyo Securities',
+    67:'Property Wiard',68:'Elite Stock House',69:'Index Securities',
+    70:'Infinity Securities',71:'Shubhakamana Securities',72:'Hatemalo Financial',
+    73:'Money World Share Exchange',74:'Kalash Stock Market',75:'Mega Stock Markets',
+    76:'Machhapuchchhre Securities',77:'Nabil Securities',78:'Garima Securities',
+    79:'Pahi Investment',80:'Indira Securities',81:'Aakashbhairab Securities',
+    82:'NMB Securities',83:'Sanima Securities',84:'Milky Way Share Broker',
+    85:'Capital Hub',86:'Stoxkarts Securities',87:'S.P.S.A. Securities',
+    88:'Blue Chip Securities',89:'JBNL Securities',90:'Sajilo Broker',
+    91:'C.B.I.L. Securities',92:'Roadshow Securities',93:'Beni Securities',
+    94:'KBL Securities',95:'Magnet Securities',96:'Himalayan Securities',
+    97:'R.B.B. Securities',98:'Trademow Securities',99:'Prabhu Stock Market',
+    100:'Sunrise Securities',101:'Apple Securities',
+  };
+
+  function brokerName(id) {
+    return BROKER_NAMES[parseInt(id)] || `#${id}`;
+  }
 
   let brokerData    = [];
   let brokerPeriod  = '1d';
@@ -2989,7 +3030,7 @@
       .sort((a, b) => Math.abs(b.netQty) - Math.abs(a.netQty))
       .slice(0, 20)
       .reverse();   // lowest abs at top of horizontal bar
-    const labels = top.map(b => `#${b.brokerId}`);
+    const labels = top.map(b => brokerName(b.brokerId));
     const values = top.map(b => b.netQty);
     const colors = values.map(v => v >= 0 ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.75)');
     const borders = values.map(v => v >= 0 ? '#22c55e' : '#ef4444');
@@ -3020,6 +3061,10 @@
           legend: { display: false },
           tooltip: {
             callbacks: {
+              title: ctx => {
+                const id = top[ctx[0].dataIndex]?.brokerId;
+                return id ? `${brokerName(id)}  (#${id})` : ctx[0].label;
+              },
               label: ctx => `Net: ${fmtQty(ctx.raw)}`
             }
           }
@@ -3048,7 +3093,7 @@
   function renderBrokerTable() {
     const q = brokerSearchStr.toLowerCase();
     let rows = [...brokerData].filter(b =>
-      !q || String(b.brokerId).toLowerCase().includes(q)
+      !q || String(b.brokerId).includes(q) || brokerName(b.brokerId).toLowerCase().includes(q)
     );
     const { col, dir } = brokerSort;
     rows.sort((a, b) => (b[col] - a[col]) * dir);
@@ -3066,7 +3111,10 @@
       const sign = b.netQty >= 0 ? '+' : '';
       return `<tr style="background:${rowBg}">
         <td style="color:var(--muted);width:40px">${i+1}</td>
-        <td><span style="background:var(--surface2);padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700">#${b.brokerId}</span></td>
+        <td>
+          <div style="font-size:13px;font-weight:600;white-space:nowrap">${brokerName(b.brokerId)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:1px">#${b.brokerId}</div>
+        </td>
         <td class="right" style="color:var(--green)">${fmtQty(b.buyQty)}</td>
         <td class="right" style="color:var(--green);font-size:11px">${fmtAmt(b.buyAmt)}</td>
         <td class="right" style="color:var(--red)">${fmtQty(b.sellQty)}</td>
