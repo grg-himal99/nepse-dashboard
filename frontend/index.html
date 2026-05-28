@@ -879,6 +879,7 @@
       <span id="statusText">Checking...</span>
     </div>
     <span class="last-updated" id="lastUpdated"></span>
+    <span id="autoRefreshBadge" style="font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:.2px"></span>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
       <span id="refreshIcon">↻</span> Refresh
@@ -2093,7 +2094,11 @@
     } catch {}
   }
 
+  const _AR_INTERVAL = 180;
+  let _arSecondsLeft = _AR_INTERVAL;
+
   async function loadAll() {
+    _arSecondsLeft = _AR_INTERVAL;
     setLoading(true);
     await Promise.all([loadStatus(), loadSummary(), loadIndex(), loadSubIndices(), loadGainersLosers(), loadPriceVolume()]);
     document.getElementById('lastUpdated').textContent =
@@ -2103,7 +2108,35 @@
   }
 
   loadAll();
-  setInterval(loadAll, 60000);
+
+  // ── Auto-refresh during Nepal market hours (Sun–Thu 11:00–15:00 NPT) ────
+
+  function _isMarketOpen() {
+    const npt = new Date(Date.now() + (5 * 60 + 45) * 60 * 1000);
+    const day  = npt.getUTCDay(); // 0=Sun … 4=Thu
+    const mins = npt.getUTCHours() * 60 + npt.getUTCMinutes();
+    return day <= 4 && mins >= 660 && mins < 900; // 11:00–15:00
+  }
+
+  setInterval(() => {
+    const badge = document.getElementById('autoRefreshBadge');
+    if (!badge) return;
+    if (!_isMarketOpen()) {
+      badge.textContent = '';
+      _arSecondsLeft = _AR_INTERVAL;
+      return;
+    }
+    _arSecondsLeft--;
+    if (_arSecondsLeft <= 0) {
+      _arSecondsLeft = _AR_INTERVAL;
+      badge.textContent = '↻ Refreshing…';
+      loadAll();
+      return;
+    }
+    const m = Math.floor(_arSecondsLeft / 60);
+    const s = String(_arSecondsLeft % 60).padStart(2, '0');
+    badge.textContent = `↺ ${m}:${s}`;
+  }, 1000);
 
   // ══════════════════════════════════════════════════
   //  MARKET BREADTH
