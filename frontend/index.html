@@ -1676,6 +1676,20 @@
   let subIndexChart = null, allocChart = null;
 
   let portfolio = [];           // parsed from PDF
+
+  // Restore saved portfolio from localStorage (live prices will enrich on loadAll)
+  (function() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('nepse_portfolio_v1') || 'null');
+      if (saved?.holdings?.length) {
+        portfolio = saved.holdings;
+        document.getElementById('uploadZone').style.display = 'none';
+        document.getElementById('pfContent').style.display = '';
+        document.getElementById('pfAsOf').textContent =
+          `${saved.name} — saved ${new Date(saved.savedAt).toLocaleString()}`;
+      }
+    } catch {}
+  })();
   let liveMap = {};             // symbol → live stock data from /PriceVolume
   let pfCurrentFilter = 'all';
   let planStock = null;         // stock currently open in modal
@@ -3290,7 +3304,9 @@
       }
       portfolio = extractHoldings(fullText);
       if(!portfolio.length) throw new Error('No holdings found');
-      document.getElementById('pfAsOf').textContent = `Uploaded: ${file.name} — ${new Date().toLocaleString()}`;
+      const savedAt = new Date().toISOString();
+      localStorage.setItem('nepse_portfolio_v1', JSON.stringify({ holdings: portfolio, name: file.name, savedAt }));
+      document.getElementById('pfAsOf').textContent = `${file.name} — ${new Date(savedAt).toLocaleString()}`;
       document.getElementById('uploadZone').style.display = 'none';
       document.getElementById('pfContent').style.display = '';
       renderPortfolio();
@@ -3336,6 +3352,7 @@
 
   function resetPortfolio() {
     portfolio = [];
+    localStorage.removeItem('nepse_portfolio_v1');
     document.getElementById('pfContent').style.display = 'none';
     document.getElementById('uploadZone').style.display = '';
     document.getElementById('uploadZone').innerHTML = `
