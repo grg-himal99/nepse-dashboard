@@ -1551,7 +1551,13 @@
         <span id="aiReportIcon" style="font-size:18px">📊</span>
         <span class="panel-title" id="aiReportTitle">Report</span>
       </div>
-      <span id="aiReportMeta" style="font-size:12px;color:var(--muted)"></span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="aiReportMeta" style="font-size:12px;color:var(--muted)"></span>
+        <button id="aiCopyBtn" onclick="copyAIReport()"
+          style="padding:5px 12px;font-size:12px;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;cursor:pointer">
+          📋 Copy
+        </button>
+      </div>
     </div>
     <div id="aiReportContent" style="padding:24px;line-height:1.85;font-size:14px;color:var(--text);max-width:860px"></div>
   </div>
@@ -3645,6 +3651,25 @@
   // ── AI Reports ────────────────────────────────────────────────────────
   let aiReportType = 'market_summary';
 
+  function _aiCacheKey(type, symbol) { return type + (symbol ? ':' + symbol : ''); }
+
+  function _aiCacheGet(type, symbol) {
+    try {
+      const store = JSON.parse(localStorage.getItem('nepse_ai_cache_v1') || '{}');
+      return store[_aiCacheKey(type, symbol)] || null;
+    } catch { return null; }
+  }
+
+  function _aiCacheSave(type, symbol, markdown) {
+    try {
+      const store = JSON.parse(localStorage.getItem('nepse_ai_cache_v1') || '{}');
+      store[_aiCacheKey(type, symbol)] = { markdown, generatedAt: Date.now() };
+      const keys = Object.keys(store).sort((a, b) => store[b].generatedAt - store[a].generatedAt);
+      keys.slice(5).forEach(k => delete store[k]); // keep last 5
+      localStorage.setItem('nepse_ai_cache_v1', JSON.stringify(store));
+    } catch {}
+  }
+
   const AI_REPORT_TITLES = {
     market_summary:  'Daily Market Summary',
     top_movers:      'Top Movers Analysis',
@@ -3710,7 +3735,7 @@
       .replace(/^(?!<[hul])(.+)$/gm, '$1');
   }
 
-  async function generateAIReport() {
+  async function generateAIReport(forceRefresh = false) {
     const btn = document.getElementById('aiGenerateBtn');
     const panel = document.getElementById('aiReportPanel');
     const content = document.getElementById('aiReportContent');
@@ -3729,14 +3754,27 @@
       }
     }
 
-    // Reset UI
+    const title = AI_REPORT_TITLES[aiReportType] + (symbol ? ` — ${symbol}` : '');
     errBox.style.display = 'none';
     document.getElementById('aiEmptyState').style.display = 'none';
     panel.style.display = '';
-    content.innerHTML = '<span style="color:var(--muted);font-style:italic">Generating analysis…<span class="ai-cursor">▌</span></span>';
-    titleEl.textContent = AI_REPORT_TITLES[aiReportType] + (symbol ? ` — ${symbol}` : '');
+    titleEl.textContent = title;
     document.getElementById('aiReportIcon').textContent = AI_REPORT_ICONS[aiReportType] || '🤖';
-    metaEl.textContent = '';
+
+    // Serve from cache if available and not forcing refresh
+    if (!forceRefresh) {
+      const cached = _aiCacheGet(aiReportType, symbol);
+      if (cached) {
+        const ageMin = Math.round((Date.now() - cached.generatedAt) / 60000);
+        const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin/60)}h ago`;
+        content.innerHTML = `<p style="margin:0">${_renderMarkdown(cached.markdown)}</p>`;
+        metaEl.innerHTML = `Cached · ${ageStr} &nbsp;·&nbsp; <button onclick="generateAIReport(true)" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0">🔄 Refresh</button>`;
+        return;
+      }
+    }
+
+    content.innerHTML = '<span style="color:var(--muted);font-style:italic">Generating analysis…<span class="ai-cursor">▌</span></span>';
+    metaEl.innerHTML = '';
     btn.disabled = true;
     btn.textContent = '⏳ Generating…';
 
@@ -3784,10 +3822,10 @@
         }
       }
 
-      // Remove cursor, show final
       content.innerHTML = `<p style="margin:0">${_renderMarkdown(fullText)}</p>`;
       const secs = ((Date.now() - startTime) / 1000).toFixed(1);
       metaEl.textContent = `Generated in ${secs}s · ${new Date().toLocaleTimeString()}`;
+      _aiCacheSave(aiReportType, symbol, fullText);
 
     } catch (err) {
       panel.style.display = 'none';
@@ -3797,6 +3835,15 @@
       btn.disabled = false;
       btn.textContent = '✨ Generate Report';
     }
+  }
+
+  function copyAIReport() {
+    const text = document.getElementById('aiReportContent').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('aiCopyBtn');
+      btn.textContent = '✓ Copied!';
+      setTimeout(() => btn.textContent = '📋 Copy', 2000);
+    });
   }
 
   function calcSell() {
