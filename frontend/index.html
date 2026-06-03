@@ -890,6 +890,22 @@
 <!-- ══════════════ MARKET VIEW ══════════════ -->
 <main id="marketView">
 
+  <!-- Tip of the Day -->
+  <div id="tipCard" style="background:linear-gradient(135deg,#1e1b4b 0%,#172554 100%);border:1px solid #3730a3;border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <span style="font-size:22px" id="tipEmoji">💡</span>
+    <div style="flex:1;min-width:200px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#818cf8" id="tipCategory">Strategy</span>
+        <span style="font-size:10px;color:#4f5eba" id="tipCounter"></span>
+      </div>
+      <div style="font-size:13px;color:#c7d2fe;line-height:1.6" id="tipText"></div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button onclick="browseTip(-1)" style="background:#312e81;border:1px solid #4338ca;color:#a5b4fc;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px">‹</button>
+      <button onclick="browseTip(1)"  style="background:#312e81;border:1px solid #4338ca;color:#a5b4fc;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px">›</button>
+    </div>
+  </div>
+
   <div class="stats-grid" id="statsGrid">
     <div class="stat-card"><div class="stat-label">Total Turnover</div><div class="stat-value skeleton" style="height:32px;width:140px;">&nbsp;</div></div>
     <div class="stat-card"><div class="stat-label">Traded Shares</div><div class="stat-value skeleton" style="height:32px;width:120px;">&nbsp;</div></div>
@@ -3912,6 +3928,57 @@
       <small style="color:var(--muted)">Note: Broker commission &amp; SEBON fee not included.</small>
     `;
   }
+
+  // ── Tip of the Day ────────────────────────────────────────────────────
+  const TIPS = [
+    { e:'🛡️', c:'Risk Management',    t:'Never risk more than 2% of your total portfolio on a single trade. Small losses are recoverable; big ones are not.' },
+    { e:'📈', c:'Technical Analysis',  t:'Volume confirms price. A breakout on strong volume is real; on low volume it\'s likely a false move.' },
+    { e:'🧠', c:'Psychology',          t:'Fear and greed drive short-term prices. Be greedy when others are fearful, fearful when others are greedy.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'NEPSE is open Sunday–Thursday, 11 AM–3 PM. Plan your trades the night before — don\'t react, act.' },
+    { e:'💰', c:'Strategy',            t:'Buy quality companies in sectors you understand. Consistent EPS growth over 3+ years is a strong signal.' },
+    { e:'🛡️', c:'Risk Management',    t:'Always set a stop-loss before entering a trade — not after the price drops. Define your risk upfront.' },
+    { e:'📈', c:'Technical Analysis',  t:'The 200-day moving average separates bull and bear markets. Price above = bullish bias, below = cautious.' },
+    { e:'🧠', c:'Psychology',          t:'Keep a trading journal. Reviewing your past decisions — wins and losses — is the fastest way to improve.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'Check the Brokers tab for institutional signals. A large broker consistently buying over 1–2 weeks is meaningful.' },
+    { e:'💰', c:'Strategy',            t:'SIP (Systematic Investment Plan) — investing a fixed amount every month removes the stress of timing the market.' },
+    { e:'🛡️', c:'Risk Management',    t:'Diversify across sectors. Banks, hydro, and insurance rarely all fall at the same time.' },
+    { e:'📈', c:'Technical Analysis',  t:'RSI below 30 means oversold — but wait for a reversal candle before buying. Oversold can stay oversold.' },
+    { e:'🧠', c:'Psychology',          t:'Don\'t check your portfolio every hour. Frequent watching leads to emotional decisions and premature selling.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'Bonus shares increase your share count but not the company value. Adjust your cost basis after each bonus issue.' },
+    { e:'💰', c:'Strategy',            t:'Take partial profits when a stock gains 20–30%. You never go broke locking in gains.' },
+    { e:'🛡️', c:'Risk Management',    t:'Keep 10–20% of your portfolio in cash. Opportunities appear during corrections — be ready to act.' },
+    { e:'📈', c:'Technical Analysis',  t:'Support becomes resistance once broken, and resistance becomes support once cleared. Flip the levels.' },
+    { e:'🧠', c:'Psychology',          t:'A small loss is just the cost of a trade that didn\'t work. Letting it become a big loss is a choice.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'NEPSE is thin. Large market orders in small-cap stocks move the price significantly. Use limit orders.' },
+    { e:'💰', c:'Strategy',            t:'Right shares are priced below market — but factor in the extra capital needed before subscribing.' },
+    { e:'🛡️', c:'Risk Management',    t:'Don\'t average down on a falling stock without a clear fundamental reason. Falling knives cut hands.' },
+    { e:'📈', c:'Technical Analysis',  t:'Wait for a candle to close above resistance before entering a breakout. Many breakouts fail intraday.' },
+    { e:'🧠', c:'Psychology',          t:'Avoid tips from social media and tea-shop talk. By the time you hear it, the smart money has already moved.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'The A/D Signals tab shows which stocks are being consistently accumulated by brokers — a powerful early signal.' },
+    { e:'💰', c:'Strategy',            t:'The trend is your friend. Don\'t fight a strong trend — trade with it until it clearly changes.' },
+    { e:'🛡️', c:'Risk Management',    t:'Position sizing matters more than stock picking. Even a great stock can hurt you with an oversized position.' },
+    { e:'📈', c:'Technical Analysis',  t:'Gaps in price charts often get filled. A stock that gaps up sharply may return to test that gap level.' },
+    { e:'🧠', c:'Psychology',          t:'Patience is a trading skill. Missing a trade is always better than forcing a bad entry.' },
+    { e:'🇳🇵', c:'NEPSE Tip',          t:'Floorsheet data reveals the real buyers and sellers behind every trade. Use it — most retail investors don\'t.' },
+    { e:'💰', c:'Strategy',            t:'Don\'t confuse a bull market with skill. When the tide goes out, you see who was swimming without discipline.' },
+  ];
+
+  let _tipIdx = Math.floor(Date.now() / 86400000) % TIPS.length;
+
+  function renderTip() {
+    const tip = TIPS[_tipIdx];
+    document.getElementById('tipEmoji').textContent    = tip.e;
+    document.getElementById('tipCategory').textContent = tip.c;
+    document.getElementById('tipText').textContent     = tip.t;
+    document.getElementById('tipCounter').textContent  = `Tip ${_tipIdx + 1} of ${TIPS.length}`;
+  }
+
+  function browseTip(dir) {
+    _tipIdx = (_tipIdx + dir + TIPS.length) % TIPS.length;
+    renderTip();
+  }
+
+  renderTip();
 </script>
 </body>
 </html>
