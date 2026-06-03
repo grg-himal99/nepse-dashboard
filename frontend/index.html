@@ -645,9 +645,44 @@
       border: 1px solid var(--border);
       background: var(--surface2);
       transition: all 0.2s;
+      position: relative;
     }
     .chart-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .chart-toggle:hover:not(.active) { background: var(--border); }
+
+    /* ── Indicator tooltips ── */
+    [data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0d0f14;
+      color: #e2e8f0;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 11px;
+      font-size: 11.5px;
+      font-weight: 400;
+      line-height: 1.5;
+      white-space: normal;
+      max-width: 200px;
+      text-align: center;
+      z-index: 9999;
+      pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.55);
+    }
+    [data-tip]:hover::before {
+      content: '';
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-bottom-color: var(--border);
+      z-index: 9999;
+      pointer-events: none;
+    }
 
     /* ── AI cursor blink ── */
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -1119,17 +1154,17 @@
       <div class="panel-header">
         <div class="panel-title"><div class="dot" style="background:var(--accent)"></div><span id="chartTitle">Price Chart</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <button id="chartModeCandle" class="chart-toggle active" onclick="setChartMode('candle',this)">Candles</button>
-          <button id="chartModeArea"   class="chart-toggle"        onclick="setChartMode('area',this)"  >Area</button>
+          <button id="chartModeCandle" class="chart-toggle active" onclick="setChartMode('candle',this)" data-tip="Candlestick chart — shows open, high, low &amp; close. Green = up day, red = down day.">Candles</button>
+          <button id="chartModeArea"   class="chart-toggle"        onclick="setChartMode('area',this)"   data-tip="Area chart — closing price as a smooth filled line.">Area</button>
           <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
-          <button class="chart-toggle active" data-key="ma20"   onclick="toggleIndicator('ma20',this)"  >MA 20</button>
-          <button class="chart-toggle"        data-key="ma50"   onclick="toggleIndicator('ma50',this)"  >MA 50</button>
-          <button class="chart-toggle"        data-key="ma200"  onclick="toggleIndicator('ma200',this)" >MA 200</button>
-          <button class="chart-toggle"        data-key="hl"     onclick="toggleIndicator('hl',this)"    >Hi/Lo Band</button>
-          <button class="chart-toggle"        data-key="sr"     onclick="toggleIndicator('sr',this)"    >S/R Lines</button>
+          <button class="chart-toggle active" data-key="ma20"   onclick="toggleIndicator('ma20',this)"   data-tip="20-day Moving Average — short-term trend. Price crossing above = bullish signal.">MA 20</button>
+          <button class="chart-toggle"        data-key="ma50"   onclick="toggleIndicator('ma50',this)"   data-tip="50-day Moving Average — medium-term trend direction.">MA 50</button>
+          <button class="chart-toggle"        data-key="ma200"  onclick="toggleIndicator('ma200',this)"  data-tip="200-day Moving Average — long-term trend. Price above = bull market, below = bear market.">MA 200</button>
+          <button class="chart-toggle"        data-key="hl"     onclick="toggleIndicator('hl',this)"     data-tip="Daily High/Low Band — dashed lines showing each day's intraday price range.">Hi/Lo Band</button>
+          <button class="chart-toggle"        data-key="sr"     onclick="toggleIndicator('sr',this)"     data-tip="Support &amp; Resistance levels — key price zones where reversals often occur.">S/R Lines</button>
           <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
-          <button class="chart-toggle active" data-key="rsi"    onclick="toggleIndicator('rsi',this)"   >RSI</button>
-          <button class="chart-toggle"        data-key="ichi"   onclick="toggleIndicator('ichi',this)"  >Ichimoku</button>
+          <button class="chart-toggle active" data-key="rsi"    onclick="toggleIndicator('rsi',this)"    data-tip="Relative Strength Index (14) — momentum indicator. Above 70 = overbought, below 30 = oversold.">RSI</button>
+          <button class="chart-toggle"        data-key="ichi"   onclick="toggleIndicator('ichi',this)"   data-tip="Ichimoku Cloud — trend, support/resistance &amp; momentum. Green cloud = bullish zone, red = bearish zone. Price above cloud = strong uptrend.">Ichimoku</button>
         </div>
       </div>
       <div style="position:relative">
