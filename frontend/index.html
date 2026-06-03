@@ -1127,9 +1127,15 @@
           <button class="chart-toggle"        data-key="ma200"  onclick="toggleIndicator('ma200',this)" >MA 200</button>
           <button class="chart-toggle"        data-key="hl"     onclick="toggleIndicator('hl',this)"    >Hi/Lo Band</button>
           <button class="chart-toggle"        data-key="sr"     onclick="toggleIndicator('sr',this)"    >S/R Lines</button>
+          <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
+          <button class="chart-toggle active" data-key="rsi"    onclick="toggleIndicator('rsi',this)"   >RSI</button>
+          <button class="chart-toggle"        data-key="ichi"   onclick="toggleIndicator('ichi',this)"  >Ichimoku</button>
         </div>
       </div>
-      <div id="lwChart" style="height:380px"></div>
+      <div style="position:relative">
+        <div id="lwChart" style="height:380px"></div>
+        <canvas id="ichimokuCanvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:2"></canvas>
+      </div>
     </div>
 
     <!-- Volume -->
@@ -1141,7 +1147,7 @@
     </div>
 
     <!-- RSI -->
-    <div class="panel">
+    <div class="panel" id="rsiPanel">
       <div class="panel-header">
         <div class="panel-title"><div class="dot" style="background:var(--yellow)"></div>RSI (14)</div>
         <span style="font-size:12px;color:var(--muted)">Overbought >70 · Oversold &lt;30</span>
@@ -1703,8 +1709,10 @@
   let lwChart = null, lwArea = null, lwCandle = null, lwHLHigh = null, lwHLLow = null;
   let lwMA20 = null, lwMA50 = null, lwMA200 = null;
   let lwSRLines = [];
+  let lwTenkan = null, lwKijun = null, lwSpanA = null, lwSpanB = null, lwChikou = null;
+  let _ichiDates = [], _ichiSpanAVals = [], _ichiSpanBVals = [];
   let volChartInst = null, rsiChartInst = null, adChartInst = null;
-  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false };
+  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false, ichi: false, rsi: true };
   let chartMode = 'candle'; // 'candle' | 'area'
   let currentChartSymbol = null;
   let scrData = [];
@@ -2307,6 +2315,53 @@
     return ad;
   }
 
+  function calcIchimoku(highs, lows, closes) {
+    const n = closes.length;
+    function mid(period, i) {
+      if (i < period - 1) return null;
+      let h = -Infinity, l = Infinity;
+      for (let j = i - period + 1; j <= i; j++) { if(highs[j]>h)h=highs[j]; if(lows[j]<l)l=lows[j]; }
+      return (h + l) / 2;
+    }
+    const tenkan = Array.from({length:n}, (_,i) => mid(9,  i));
+    const kijun  = Array.from({length:n}, (_,i) => mid(26, i));
+    const spanA  = Array.from({length:n}, (_,i) => tenkan[i]!=null&&kijun[i]!=null ? (tenkan[i]+kijun[i])/2 : null);
+    const spanB  = Array.from({length:n}, (_,i) => mid(52, i));
+    return { tenkan, kijun, spanA, spanB };
+  }
+
+  function drawIchimokuCloud() {
+    const canvas = document.getElementById('ichimokuCanvas');
+    if (!canvas || !lwChart) return;
+    const container = document.getElementById('lwChart');
+    canvas.width  = container.clientWidth;
+    canvas.height = container.clientHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!chartIndicators.ichi) return;
+    const series = lwCandle || lwArea;
+    if (!series || !_ichiDates.length) return;
+    const pts = [];
+    for (let i = 0; i < _ichiDates.length; i++) {
+      if (_ichiSpanAVals[i] == null || _ichiSpanBVals[i] == null) continue;
+      const x  = lwChart.timeScale().timeToCoordinate(_ichiDates[i]);
+      const yA = series.priceToCoordinate(_ichiSpanAVals[i]);
+      const yB = series.priceToCoordinate(_ichiSpanBVals[i]);
+      if (x == null || yA == null || yB == null) continue;
+      pts.push({ x, yA, yB });
+    }
+    if (pts.length < 2) return;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p = pts[i], q = pts[i+1];
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.yA); ctx.lineTo(q.x, q.yA);
+      ctx.lineTo(q.x, q.yB); ctx.lineTo(p.x, p.yB);
+      ctx.closePath();
+      ctx.fillStyle = p.yA < p.yB ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)';
+      ctx.fill();
+    }
+  }
+
   function getLWTheme() {
     const light = document.documentElement.classList.contains('light');
     return {
@@ -2449,11 +2504,37 @@
         lwSRLines.push(line);
       }
 
+      // ── Ichimoku Cloud ──
+      const ichi = calcIchimoku(highs, lows, closes);
+      _ichiDates = dates; _ichiSpanAVals = ichi.spanA; _ichiSpanBVals = ichi.spanB;
+
+      const ichiLine = (color, width=1) => lwChart.addLineSeries({
+        color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      lwTenkan = ichiLine('#38bdf8');
+      lwKijun  = ichiLine('#f97316', 1.5);
+      lwSpanA  = ichiLine('rgba(34,197,94,0.9)');
+      lwSpanB  = ichiLine('rgba(239,68,68,0.9)');
+      lwChikou = ichiLine('rgba(148,163,184,0.7)');
+
+      const toSeries = (vals) => dates.map((d,i) => vals[i]!=null ? {time:d,value:vals[i]} : null).filter(Boolean);
+      lwTenkan.setData(toSeries(ichi.tenkan));
+      lwKijun.setData(toSeries(ichi.kijun));
+      lwSpanA.setData(toSeries(ichi.spanA));
+      lwSpanB.setData(toSeries(ichi.spanB));
+      lwChikou.setData(dates.map((d,i) => i>=26 ? {time:dates[i-26],value:closes[i]} : null).filter(Boolean));
+      [lwTenkan,lwKijun,lwSpanA,lwSpanB,lwChikou].forEach(s => s.applyOptions({visible:chartIndicators.ichi}));
+
+      lwChart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(drawIchimokuCloud));
+
       lwChart.timeScale().fitContent();
+      requestAnimationFrame(drawIchimokuCloud);
 
       // Resize observer
-      new ResizeObserver(() => { if(lwChart) lwChart.applyOptions({ width: container.clientWidth }); })
-        .observe(container);
+      new ResizeObserver(() => {
+        if(lwChart) lwChart.applyOptions({ width: container.clientWidth });
+        requestAnimationFrame(drawIchimokuCloud);
+      }).observe(container);
 
       // ── Volume chart (Chart.js) ──
       if(volChartInst) volChartInst.destroy();
@@ -2567,6 +2648,14 @@
     }
     if(key === 'sr') {
       lwSRLines.forEach(l => l.applyOptions({ visible: chartIndicators.sr }));
+    }
+    if(key === 'ichi') {
+      [lwTenkan,lwKijun,lwSpanA,lwSpanB,lwChikou].forEach(s => s?.applyOptions({visible:chartIndicators.ichi}));
+      requestAnimationFrame(drawIchimokuCloud);
+    }
+    if(key === 'rsi') {
+      const panel = document.getElementById('rsiPanel');
+      if(panel) panel.style.display = chartIndicators.rsi ? '' : 'none';
     }
   }
 
