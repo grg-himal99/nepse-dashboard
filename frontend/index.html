@@ -925,6 +925,25 @@
 <!-- ══════════════ MARKET VIEW ══════════════ -->
 <main id="marketView">
 
+  <!-- Share of the Day (post-market) -->
+  <div id="sotdCard" style="display:none;background:linear-gradient(135deg,#0a1f14 0%,#052e16 100%);border:1px solid #166534;border-radius:var(--radius);padding:14px 18px;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="font-size:28px;line-height:1">📈</div>
+    <div style="flex:1;min-width:180px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#4ade80">Share of the Day</span>
+        <span style="font-size:10px;color:#15803d" id="sotdSubtitle">Top pick to watch tomorrow</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:22px;font-weight:700;color:#f0fdf4" id="sotdSymbol">—</span>
+        <span style="font-size:15px;font-weight:700" id="sotdChange">—</span>
+        <span style="font-size:13px;color:#86efac" id="sotdLTP">—</span>
+      </div>
+      <div style="font-size:12px;color:#86efac;margin-top:2px" id="sotdName">—</div>
+      <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap" id="sotdTags"></div>
+    </div>
+    <button id="sotdChartBtn" style="background:#052e16;border:1px solid #166534;color:#4ade80;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0">📊 View Chart</button>
+  </div>
+
   <!-- Tip of the Day -->
   <div id="tipCard" style="background:linear-gradient(135deg,#1e1b4b 0%,#172554 100%);border:1px solid #3730a3;border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <span style="font-size:22px" id="tipEmoji">💡</span>
@@ -1927,6 +1946,7 @@
       renderMarketBreadth();
       loadCompanyMap();
       if(portfolio.length) renderPortfolio();
+      renderSOTD();
     } catch {
       document.getElementById('stockTable').innerHTML=`<tr><td colspan="6"><div class="no-data">Failed to load</div></td></tr>`;
     }
@@ -4014,6 +4034,51 @@
   }
 
   renderTip();
+
+  // ══════════════════════════════════════════════════
+  //  SHARE OF THE DAY
+  // ══════════════════════════════════════════════════
+
+  function _computeSOTD(stocks) {
+    const candidates = stocks.filter(s => (s.percentageChange || 0) > 0.3 && (s.totalTradeQuantity || 0) > 0);
+    if (!candidates.length) return null;
+    const scored = candidates.map(s => {
+      const pct  = s.percentageChange || 0;
+      const vol  = s.totalTradeQuantity || 1;
+      const range = (s.highPrice || 0) - (s.lowPrice || 0);
+      const closeStr = range > 0 ? Math.max(0, Math.min(1, (s.lastTradedPrice - (s.lowPrice||0)) / range)) : 0.5;
+      const score = pct * Math.log10(vol + 1) * (0.6 + 0.4 * closeStr);
+      const tags = [];
+      tags.push({ label: `+${fmt(pct)}% gain`, bg: 'rgba(74,222,128,.12)', color: '#4ade80' });
+      if (closeStr > 0.75) tags.push({ label: 'Closed near high', bg: 'rgba(251,191,36,.1)', color: '#fbbf24' });
+      if (vol >= 100000) tags.push({ label: 'High volume', bg: 'rgba(96,165,250,.1)', color: '#60a5fa' });
+      else if (vol >= 30000) tags.push({ label: 'Active volume', bg: 'rgba(147,197,253,.08)', color: '#93c5fd' });
+      if (s.sectorName) tags.push({ label: s.sectorName, bg: 'rgba(255,255,255,.05)', color: '#6b7280' });
+      return { ...s, score, closeStr, tags };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0];
+  }
+
+  function renderSOTD() {
+    if (!allStocks.length) return;
+    const card = document.getElementById('sotdCard');
+    if (!card) return;
+    if (_isMarketOpen()) { card.style.display = 'none'; return; }
+    const pick = _computeSOTD(allStocks);
+    if (!pick) { card.style.display = 'none'; return; }
+    const pct = pick.percentageChange || 0;
+    document.getElementById('sotdSymbol').textContent   = pick.symbol;
+    document.getElementById('sotdName').textContent     = pick.securityName || '';
+    document.getElementById('sotdLTP').textContent      = `Rs ${fmt(pick.lastTradedPrice)}`;
+    document.getElementById('sotdChange').textContent   = `+${fmt(pct)}%`;
+    document.getElementById('sotdChange').style.color   = '#4ade80';
+    document.getElementById('sotdTags').innerHTML = (pick.tags || []).map(t =>
+      `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:${t.bg};color:${t.color}">${t.label}</span>`
+    ).join('');
+    document.getElementById('sotdChartBtn').onclick = () => selectChartAndSwitch(pick.symbol);
+    card.style.display = 'flex';
+  }
 </script>
 </body>
 </html>
