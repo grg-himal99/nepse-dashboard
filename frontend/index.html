@@ -925,6 +925,26 @@
 <!-- ══════════════ MARKET VIEW ══════════════ -->
 <main id="marketView">
 
+  <!-- Stop Loss Alert Card -->
+  <div id="slAlertCard" style="display:none;border-radius:var(--radius);overflow:hidden">
+    <div id="slAlertInner" style="padding:14px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px" id="slAlertIcon">🚨</span>
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase" id="slAlertTitle">Stop Loss Alert</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:1px" id="slAlertSubtitle"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="showView('portfolio', document.querySelector('.nav-tab[onclick*=portfolio]'))" id="slAlertViewBtn" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff">View in Portfolio →</button>
+          <button onclick="document.getElementById('slAlertCard').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:rgba(255,255,255,.5);padding:0 4px;line-height:1">✕</button>
+        </div>
+      </div>
+      <div id="slAlertRows" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+  </div>
+
   <!-- Share of the Day (post-market) -->
   <div id="sotdCard" style="display:none;background:linear-gradient(135deg,#0a1f14 0%,#052e16 100%);border:1px solid #166534;border-radius:var(--radius);padding:14px 18px;align-items:center;gap:16px;flex-wrap:wrap">
     <div style="font-size:28px;line-height:1">📈</div>
@@ -942,6 +962,28 @@
       <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap" id="sotdTags"></div>
     </div>
     <button id="sotdChartBtn" style="background:#052e16;border:1px solid #166534;color:#4ade80;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0">📊 View Chart</button>
+  </div>
+
+  <!-- Sector of the Day (post-market) -->
+  <div id="sectodCard" style="display:none;background:linear-gradient(135deg,#0c1a20 0%,#042f35 100%);border:1px solid #0e7490;border-radius:var(--radius);padding:14px 18px;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="font-size:28px;line-height:1">🏭</div>
+    <div style="flex:1;min-width:180px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#22d3ee">Sector of the Day</span>
+        <span style="font-size:10px;color:#0e7490" id="sectodBreadth">—</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-size:20px;font-weight:700;color:#ecfeff" id="sectodName">—</span>
+        <span style="font-size:15px;font-weight:700;color:#22d3ee" id="sectodAvg">—</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#67e8f9">Top pick:</span>
+        <span style="font-size:13px;font-weight:700;color:#ecfeff" id="sectodTopSymbol">—</span>
+        <span style="font-size:12px;font-weight:600;color:#22d3ee" id="sectodTopChange">—</span>
+        <span style="font-size:11px;color:#0891b2" id="sectodTopName">—</span>
+      </div>
+    </div>
+    <button id="sectodChartBtn" style="background:#042f35;border:1px solid #0e7490;color:#22d3ee;border-radius:8px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0">📊 View Chart</button>
   </div>
 
   <!-- Tip of the Day -->
@@ -1545,6 +1587,31 @@
       </div>
     </div>
 
+    <!-- Stop Loss Monitor -->
+    <div class="panel" id="slPanel" style="margin-top:0;display:none">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:#ef4444"></div>🛡️ Stop Loss Monitor</div>
+        <span style="font-size:11px;color:var(--muted)" id="slPanelNote">Support-based (52w low − 2%) · Updating…</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table" style="font-size:12px">
+          <thead><tr>
+            <th>Symbol</th>
+            <th class="right">Avg Buy</th>
+            <th class="right">Current</th>
+            <th class="right">SL (Support)</th>
+            <th class="right">SL 10%</th>
+            <th class="right">SL 8%</th>
+            <th class="right">SL 5%</th>
+            <th class="right">Status</th>
+            <th class="right">Max Shares</th>
+            <th class="right">P&amp;L %</th>
+          </tr></thead>
+          <tbody id="slTable"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -1763,6 +1830,8 @@
         document.getElementById('pfContent').style.display = '';
         document.getElementById('pfAsOf').textContent =
           `${saved.name} — saved ${new Date(saved.savedAt).toLocaleString()}`;
+        // kick off 52-week fetch in background (liveMap not ready yet; renderSL* fires after loadPriceVolume)
+        setTimeout(fetchSL52wData, 2000);
       }
     } catch {}
   })();
@@ -1770,6 +1839,8 @@
   let pfCurrentFilter = 'all';
   let planStock = null;         // stock currently open in modal
   let depthMap = {};            // symbol → {imbalance, totalBuyQty, totalSellQty}
+  let _sl52wMap = {};           // symbol → 52-week low price
+  let _slChartData = {};        // symbol → [{businessDate, closePrice, lowPrice}, ...]
   let depthData = [];           // full depth array
   let companyMap = {};          // symbol → {sectorName, securityName}
   let sentimentFilter = { type: 'All', sector: 'All' };
@@ -1947,6 +2018,7 @@
       loadCompanyMap();
       if(portfolio.length) renderPortfolio();
       renderSOTD();
+      renderSectorOfDay();
     } catch {
       document.getElementById('stockTable').innerHTML=`<tr><td colspan="6"><div class="no-data">Failed to load</div></td></tr>`;
     }
@@ -3470,6 +3542,7 @@
       document.getElementById('uploadZone').style.display = 'none';
       document.getElementById('pfContent').style.display = '';
       renderPortfolio();
+      fetchSL52wData();
     } catch(err) {
       document.getElementById('uploadZone').innerHTML = `
         <span class="upload-icon">❌</span>
@@ -3552,6 +3625,8 @@
     renderAllocChart(enriched);
     renderMovers(enriched);
     renderPfTable(enriched);
+    renderSLTable(enriched);
+    renderSLAlertCard(enriched);
   }
 
   function renderPfStats(data) {
@@ -4077,6 +4152,242 @@
       `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:${t.bg};color:${t.color}">${t.label}</span>`
     ).join('');
     document.getElementById('sotdChartBtn').onclick = () => selectChartAndSwitch(pick.symbol);
+    card.style.display = 'flex';
+  }
+
+  // ══════════════════════════════════════════════════
+  //  STOP LOSS MONITOR
+  // ══════════════════════════════════════════════════
+
+  async function fetchSL52wData() {
+    if (!portfolio.length) return;
+    await Promise.all(portfolio.map(async h => {
+      try {
+        const data = await apiFetch(`/chart/${h.symbol}`);
+        if (!data?.length) return;
+        const slice = data.slice(-260); // last ~52 weeks of trading days
+        const lows = slice.map(d => d.lowPrice).filter(v => v > 0);
+        if (lows.length) _sl52wMap[h.symbol] = Math.min(...lows);
+        _slChartData[h.symbol] = slice.map(d => ({
+          businessDate: d.businessDate,
+          closePrice:   d.closePrice,
+          lowPrice:     d.lowPrice,
+        }));
+      } catch {}
+    }));
+    // Re-render with 52w data now available
+    if (portfolio.length && Object.keys(liveMap).length) {
+      const enriched = portfolio.map(h => {
+        const live = liveMap[h.symbol];
+        const liveLtp   = live ? live.lastTradedPrice : null;
+        const liveValue = liveLtp ? liveLtp * h.qty : h.value;
+        const liveGain  = h.cost!=null && liveLtp ? liveValue - h.cost : h.gain;
+        const livePct   = h.cost!=null && liveLtp ? (liveGain/h.cost)*100 : h.pct;
+        return {...h, liveLtp, liveValue, liveGain, livePct};
+      });
+      renderSLTable(enriched);
+      renderSLAlertCard(enriched);
+      document.getElementById('slPanelNote').textContent = 'Support-based (52w low − 2%) · Loaded';
+    }
+  }
+
+  function _computeSL(enriched) {
+    const totalValue = enriched.reduce((s, h) => s + (h.liveValue || 0), 0);
+    return enriched.map(h => {
+      const current  = h.liveLtp || h.ltp || 0;
+      const avgBuy   = h.avgBuy || 0;
+      const low52w   = _sl52wMap[h.symbol] || null;
+      const slSupport = low52w ? +(low52w * 0.98).toFixed(2) : null;
+      const sl10      = avgBuy ? +(avgBuy * 0.90).toFixed(2) : null;
+      const sl8       = avgBuy ? +(avgBuy * 0.92).toFixed(2) : null;
+      const sl5       = avgBuy ? +(avgBuy * 0.95).toFixed(2) : null;
+      const primarySL = slSupport || sl8;  // support-based preferred, else moderate fallback
+      let status = 'UNKNOWN';
+      if (primarySL && current) {
+        if (current < primarySL)              status = 'BREACHED';
+        else if (current < primarySL * 1.05) status = 'WARNING';
+        else                                  status = 'SAFE';
+      }
+      const riskPerShare = (primarySL && current) ? +(current - primarySL).toFixed(2) : null;
+      const riskPerTrade = totalValue * 0.02;
+      const maxShares    = (riskPerShare && riskPerShare > 0) ? Math.floor(riskPerTrade / riskPerShare) : null;
+      const pnlPct       = (avgBuy && current) ? +((current - avgBuy) / avgBuy * 100).toFixed(2) : null;
+
+      // Find how many calendar days ago the current breach streak started
+      let breachDaysAgo = null, breachDate = null;
+      if (status === 'BREACHED' && primarySL) {
+        const bars = _slChartData[h.symbol] || [];
+        if (bars.length) {
+          // Walk backwards to find last "safe" bar (close >= SL); next bar is breach start
+          let i = bars.length - 1;
+          while (i >= 0 && bars[i].closePrice < primarySL) i--;
+          const streakStart = bars[i + 1] || bars[0];
+          if (streakStart?.businessDate) {
+            breachDaysAgo = Math.floor((Date.now() - new Date(streakStart.businessDate).getTime()) / 86400000);
+            breachDate    = streakStart.businessDate;
+          }
+        }
+      }
+
+      return { ...h, current, avgBuy, slSupport, sl10, sl8, sl5, primarySL, status, riskPerShare, maxShares, pnlPct, breachDaysAgo, breachDate };
+    });
+  }
+
+  function renderSLTable(enriched) {
+    if (!portfolio.length) return;
+    const panel = document.getElementById('slPanel');
+    const tbody = document.getElementById('slTable');
+    if (!panel || !tbody) return;
+    panel.style.display = '';
+    const rows = _computeSL(enriched);
+    const statusCell = r => {
+      if (r.status === 'BREACHED') {
+        const ago = r.breachDaysAgo != null
+          ? `<div style="font-size:9px;color:#dc2626;margin-top:2px">${r.breachDaysAgo === 0 ? 'breached today' : `breached ${r.breachDaysAgo}d ago`}</div>`
+          : '';
+        return `<div style="text-align:right"><span style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap">🚨 BREACHED</span>${ago}</div>`;
+      }
+      if (r.status === 'WARNING')  return `<span style="background:#fef3c7;color:#d97706;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap">⚠️ WARNING</span>`;
+      if (r.status === 'SAFE')     return `<span style="background:#dcfce7;color:#16a34a;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap">✅ SAFE</span>`;
+      return `<span style="color:var(--muted);font-size:10px">—</span>`;
+    };
+    tbody.innerHTML = rows.map(r => {
+      const rowBg = r.status==='BREACHED' ? 'background:rgba(239,68,68,.07)' : r.status==='WARNING' ? 'background:rgba(245,158,11,.06)' : '';
+      const pnlColor = r.pnlPct == null ? '' : r.pnlPct >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+      return `<tr style="${rowBg}">
+        <td><span class="symbol-badge">${r.symbol}</span></td>
+        <td class="right">${r.avgBuy ? 'Rs '+fmt(r.avgBuy) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right" style="font-weight:600">Rs ${fmt(r.current)}</td>
+        <td class="right" style="color:var(--red)">${r.slSupport ? 'Rs '+fmt(r.slSupport) : '<span style="color:var(--muted)">loading…</span>'}</td>
+        <td class="right" style="color:var(--muted)">${r.sl10 ? fmt(r.sl10) : '—'}</td>
+        <td class="right" style="color:var(--muted)">${r.sl8  ? fmt(r.sl8)  : '—'}</td>
+        <td class="right" style="color:var(--muted)">${r.sl5  ? fmt(r.sl5)  : '—'}</td>
+        <td class="right">${statusCell(r)}</td>
+        <td class="right">${r.maxShares != null ? r.maxShares : '<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right" style="${pnlColor}">${r.pnlPct != null ? (r.pnlPct>=0?'+':'')+r.pnlPct+'%' : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderSLAlertCard(enriched) {
+    if (!portfolio.length) return;
+    const card  = document.getElementById('slAlertCard');
+    const inner = document.getElementById('slAlertInner');
+    if (!card || !inner) return;
+    const rows = _computeSL(enriched);
+    const breached = rows.filter(r => r.status === 'BREACHED');
+    const warning  = rows.filter(r => r.status === 'WARNING');
+    if (!breached.length && !warning.length) { card.style.display = 'none'; return; }
+
+    // Theme: red if any BREACHED, amber if only warnings
+    const isRed = breached.length > 0;
+    inner.style.background = isRed
+      ? 'linear-gradient(135deg,#450a0a 0%,#7f1d1d 100%)'
+      : 'linear-gradient(135deg,#451a03 0%,#78350f 100%)';
+    card.style.border = `1px solid ${isRed ? '#dc2626' : '#d97706'}`;
+
+    document.getElementById('slAlertIcon').textContent    = isRed ? '🚨' : '⚠️';
+    document.getElementById('slAlertTitle').textContent   = isRed ? 'Stop Loss Breached!' : 'Stop Loss Warning';
+    document.getElementById('slAlertTitle').style.color   = isRed ? '#fca5a5' : '#fde68a';
+    document.getElementById('slAlertSubtitle').textContent =
+      [breached.length && `${breached.length} stock${breached.length>1?'s':''} breached`,
+       warning.length  && `${warning.length} near stop loss`].filter(Boolean).join(' · ');
+
+    const allAlerts = [
+      ...breached.map(r => ({ ...r, isBreached: true })),
+      ...warning.map(r  => ({ ...r, isBreached: false })),
+    ];
+    document.getElementById('slAlertRows').innerHTML = allAlerts.map(r => {
+      const sl  = fmt(r.primarySL);
+      const pct = r.pnlPct != null ? `${r.pnlPct>=0?'+':''}${r.pnlPct}%` : '';
+      const bg  = r.isBreached ? 'rgba(220,38,38,.15)' : 'rgba(217,119,6,.12)';
+      const col = r.isBreached ? '#fca5a5' : '#fde68a';
+      const agoText = (r.isBreached && r.breachDaysAgo != null)
+        ? (r.breachDaysAgo === 0 ? '· breached today' : `· ${r.breachDaysAgo}d ago`)
+        : '';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;background:${bg};flex-wrap:wrap">
+        <span style="font-weight:700;font-size:13px;color:#fff;min-width:70px">${r.symbol}</span>
+        <span style="font-size:12px;color:rgba(255,255,255,.7)">Current: <strong style="color:#fff">Rs ${fmt(r.current)}</strong></span>
+        <span style="font-size:12px;color:rgba(255,255,255,.7)">SL: <strong style="color:${col}">Rs ${sl}</strong></span>
+        ${agoText ? `<span style="font-size:11px;color:${col};font-style:italic">${agoText}</span>` : ''}
+        ${pct ? `<span style="font-size:11px;color:${r.pnlPct>=0?'#86efac':'#fca5a5'}">${pct}</span>` : ''}
+        <button onclick="selectChartAndSwitch('${r.symbol}')" style="margin-left:auto;font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff">📊 Chart</button>
+      </div>`;
+    }).join('');
+
+    card.style.display = 'block';
+
+    // Browser notification (once per session per symbol)
+    if (Notification.permission === 'granted' || Notification.permission === 'default') {
+      breached.forEach(r => {
+        const key = `sl_notif_${r.symbol}_${new Date().toDateString()}`;
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+        if (Notification.permission === 'granted') {
+          new Notification(`🚨 ${r.symbol} hit stop loss!`, {
+            body: `Current: Rs ${fmt(r.current)} | SL: Rs ${fmt(r.primarySL)}`,
+            icon: '/favicon.ico'
+          });
+        } else {
+          Notification.requestPermission().then(p => {
+            if (p === 'granted') new Notification(`🚨 ${r.symbol} hit stop loss!`, {
+              body: `Current: Rs ${fmt(r.current)} | SL: Rs ${fmt(r.primarySL)}`
+            });
+          });
+        }
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  //  SECTOR OF THE DAY
+  // ══════════════════════════════════════════════════
+
+  function _computeSectorOfDay(stocks) {
+    const sectors = {};
+    stocks.forEach(s => {
+      const name = s.sectorName || 'Other';
+      if (!sectors[name]) sectors[name] = [];
+      sectors[name].push(s);
+    });
+    const scoreStock = x => {
+      const pct = x.percentageChange || 0;
+      const vol = x.totalTradeQuantity || 1;
+      const range = (x.highPrice || 0) - (x.lowPrice || 0);
+      const cs = range > 0 ? Math.max(0, Math.min(1, (x.lastTradedPrice - (x.lowPrice||0)) / range)) : 0.5;
+      return pct * Math.log10(vol + 1) * (0.6 + 0.4 * cs);
+    };
+    const ranked = Object.entries(sectors).map(([name, list]) => {
+      const valid = list.filter(s => typeof s.percentageChange === 'number');
+      if (valid.length < 2) return null;
+      const avg = valid.reduce((sum, s) => sum + (s.percentageChange || 0), 0) / valid.length;
+      const up   = valid.filter(s => s.percentageChange > 0).length;
+      const gainers = valid.filter(s => (s.percentageChange || 0) > 0 && (s.totalTradeQuantity || 0) > 0);
+      gainers.sort((a, b) => scoreStock(b) - scoreStock(a));
+      const topStock = gainers[0] || null;
+      return { name, avg, up, total: valid.length, topStock };
+    }).filter(Boolean);
+    ranked.sort((a, b) => b.avg - a.avg);
+    return ranked[0] || null;
+  }
+
+  function renderSectorOfDay() {
+    if (!allStocks.length) return;
+    const card = document.getElementById('sectodCard');
+    if (!card) return;
+    if (_isMarketOpen()) { card.style.display = 'none'; return; }
+    const pick = _computeSectorOfDay(allStocks);
+    if (!pick || pick.avg <= 0) { card.style.display = 'none'; return; }
+    document.getElementById('sectodName').textContent    = pick.name;
+    document.getElementById('sectodAvg').textContent     = `+${fmt(pick.avg)}% avg`;
+    document.getElementById('sectodBreadth').textContent = `${pick.up} of ${pick.total} stocks up`;
+    if (pick.topStock) {
+      const pct = pick.topStock.percentageChange || 0;
+      document.getElementById('sectodTopSymbol').textContent = pick.topStock.symbol;
+      document.getElementById('sectodTopChange').textContent = `+${fmt(pct)}%`;
+      document.getElementById('sectodTopName').textContent   = pick.topStock.securityName || '';
+      document.getElementById('sectodChartBtn').onclick = () => selectChartAndSwitch(pick.topStock.symbol);
+    }
     card.style.display = 'flex';
   }
 </script>
