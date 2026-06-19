@@ -948,10 +948,15 @@
   <!-- Today's Portfolio P&L -->
   <div id="todayPnlCard" onclick="showView('portfolio', document.querySelector('.nav-tab[onclick*=portfolio]'))" style="display:none;border-radius:var(--radius);padding:14px 20px;display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;cursor:pointer">
     <div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Today's Portfolio P&amp;L</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-bottom:4px" id="todayPnlLabel">Portfolio P&amp;L</div>
       <div id="todayPnlValue" style="font-size:22px;font-weight:700">—</div>
     </div>
-    <div id="todayPnlBreakdown" style="font-size:12px;color:var(--muted)"></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+      <div id="todayPnlBreakdown" style="font-size:12px;color:rgba(255,255,255,.6)"></div>
+      <div style="font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);letter-spacing:.3px;display:flex;align-items:center;gap:5px">
+        View full breakdown <span style="font-size:14px;line-height:1">→</span>
+      </div>
+    </div>
   </div>
 
   <!-- Share of the Day (post-market) -->
@@ -1507,16 +1512,26 @@
 <main id="portfolioView" style="display:none">
 
   <!-- Upload zone (shown when no portfolio loaded) -->
-  <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-radius:10px;background:#1c1a08;border:1px solid #854d0e;margin-bottom:14px">
+  <div id="privacyNotice" style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-radius:10px;background:#1c1a08;border:1px solid #854d0e;margin-bottom:14px">
     <span style="font-size:18px;flex-shrink:0;margin-top:1px">🔒</span>
-    <div>
+    <div style="flex:1">
       <div style="font-size:13px;font-weight:700;color:#fef08a;margin-bottom:4px">Your data stays on this device</div>
       <div style="font-size:12px;color:#d4b96a;line-height:1.7">
         Your portfolio PDF is parsed entirely in the browser and stored in <strong style="color:#fef08a">browser local storage only</strong> — never sent to any server.
         Anyone with access to this browser or device can view your holdings. Use a private / incognito window on shared devices, or clear site data when done.
       </div>
+      <button onclick="dismissPrivacyNotice()" style="margin-top:10px;font-size:11px;font-weight:600;padding:4px 12px;border-radius:6px;cursor:pointer;background:rgba(254,240,138,.12);border:1px solid #854d0e;color:#fef08a">Got it, don't show again</button>
     </div>
   </div>
+  <script>
+    if (localStorage.getItem('nepse_privacy_dismissed') === '1') {
+      document.getElementById('privacyNotice').style.display = 'none';
+    }
+    function dismissPrivacyNotice() {
+      localStorage.setItem('nepse_privacy_dismissed', '1');
+      document.getElementById('privacyNotice').style.display = 'none';
+    }
+  </script>
 
   <div id="uploadZone" class="upload-zone" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
     <span class="upload-icon">📄</span>
@@ -1538,8 +1553,57 @@
         <div style="font-size:20px;font-weight:700">My Portfolio</div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px" id="pfAsOf"></div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <span class="upload-again" onclick="resetPortfolio()">↑ Upload new PDF</span>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="position:relative;display:inline-flex;align-items:center;gap:4px">
+          <span class="upload-again" onclick="resetPortfolio()">↑ Upload Portfolio PDF</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--muted);font-size:10px;font-weight:700;cursor:default;flex-shrink:0"
+            onmouseenter="document.getElementById('pfInfoTooltip').style.display='block'"
+            onmouseleave="document.getElementById('pfInfoTooltip').style.display='none'">?</span>
+          <div id="pfInfoTooltip" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:999;width:290px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text);line-height:1.7;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+            <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Portfolio PDF — current holdings snapshot</div>
+            <ol style="margin:0;padding-left:16px;color:var(--muted)">
+              <li>Login to <strong style="color:var(--text)">MeroShare</strong> (meroshare.cdsc.com.np)</li>
+              <li>Go to <strong style="color:var(--text)">My Shares → My Portfolio</strong></li>
+              <li>Click <strong style="color:var(--text)">Download / Export PDF</strong></li>
+            </ol>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--muted);font-size:11px">
+              <strong style="color:#fbbf24">Difference from Transaction History:</strong><br>
+              This PDF shows <strong style="color:var(--text)">what you currently hold</strong> (symbol, qty, avg buy, value). The Transaction History PDF is from your <strong style="color:var(--text)">broker portal</strong> and shows every buy/sell with dates — used to auto-fill buy dates for the Daily P&amp;L chart.
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;display:inline-flex;align-items:center;gap:4px">
+          <label class="refresh-btn" style="cursor:pointer">
+            📋 Import Transaction History
+            <input type="file" accept=".pdf" style="display:none" onchange="onTxHistorySelect(event)">
+          </label>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--muted);font-size:10px;font-weight:700;cursor:default;flex-shrink:0"
+            onmouseenter="document.getElementById('txInfoTooltip').style.display='block'"
+            onmouseleave="document.getElementById('txInfoTooltip').style.display='none'">?</span>
+          <div id="txInfoTooltip" style="display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:999;width:280px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text);line-height:1.7;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+            <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Transaction History PDF — from your broker</div>
+            <ol style="margin:0;padding-left:16px;color:var(--muted)">
+              <li>Login to your <strong style="color:var(--text)">broker's portal</strong> (e.g. Global IME Capital, Nabil Invest, etc.)</li>
+              <li>Go to <strong style="color:var(--text)">Transaction Statement of Account</strong> or similar section</li>
+              <li>Download / Export as <strong style="color:var(--text)">PDF</strong></li>
+            </ol>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);color:var(--muted);font-size:11px">
+              Used only to auto-fill buy dates for the Daily P&amp;L chart — never uploaded anywhere.
+            </div>
+          </div>
+        </div>
+        <span id="txHistoryStatus" style="font-size:11px;color:var(--muted);cursor:pointer" onclick="document.getElementById('txImportModal').style.display='flex'"></span>
+
+        <!-- Import result modal -->
+        <div id="txImportModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:90%;max-width:480px;max-height:80vh;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <div style="font-size:15px;font-weight:700">Transaction History Import</div>
+              <button onclick="document.getElementById('txImportModal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--muted)">✕</button>
+            </div>
+            <div id="txImportModalBody" style="font-size:13px;color:var(--text)"></div>
+          </div>
+        </div>
         <button class="refresh-btn" onclick="refreshPortfolio()">↻ Refresh live prices</button>
       </div>
     </div>
@@ -1587,6 +1651,9 @@
           <span class="filter-chip" onclick="pfFilter('unknown',this)">No Cost Basis</span>
         </div>
       </div>
+      <div style="font-size:11px;color:var(--muted);padding:6px 2px 8px">
+        💡 <strong style="color:var(--text)">Buy Date</strong> is used to filter the Daily P&amp;L chart — import your MeroShare <strong style="color:var(--text)">Transaction History PDF</strong> above to auto-fill all dates accurately.
+      </div>
       <div class="scrollable-table" style="max-height:500px">
         <table>
           <thead>
@@ -1594,6 +1661,7 @@
               <th>Symbol</th>
               <th class="right">Qty</th>
               <th class="right">Avg Buy</th>
+              <th class="right">Buy Date</th>
               <th class="right">PDF LTP</th>
               <th class="right">Live LTP</th>
               <th class="right">Current Value</th>
@@ -1604,6 +1672,45 @@
           </thead>
           <tbody id="pfTable"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Daily P&L Chart -->
+    <div class="panel" id="dailyPnlPanel" style="display:none">
+      <div class="panel-header" style="flex-wrap:wrap;gap:8px">
+        <div class="panel-title"><div class="dot" style="background:#6366f1"></div>📅 Daily P&amp;L</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button onclick="setDailyPnlRange(30)"  id="dpnlBtn30"  style="font-size:11px;padding:2px 10px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--accent);color:#fff">1M</button>
+          <button onclick="setDailyPnlRange(90)"  id="dpnlBtn90"  style="font-size:11px;padding:2px 10px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text)">3M</button>
+          <button onclick="setDailyPnlRange(180)" id="dpnlBtn180" style="font-size:11px;padding:2px 10px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text)">6M</button>
+          <button onclick="setDailyPnlRange(260)" id="dpnlBtn260" style="font-size:11px;padding:2px 10px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text)">1Y</button>
+          <span style="color:var(--border);font-size:13px">|</span>
+          <input type="date" id="dpnlFrom" onchange="applyDailyPnlDateRange()" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+          <span style="font-size:11px;color:var(--muted)">to</span>
+          <input type="date" id="dpnlTo" onchange="applyDailyPnlDateRange()" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+          <button onclick="clearDailyPnlDateRange()" id="dpnlClearBtn" style="display:none;font-size:11px;padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted)">✕</button>
+        </div>
+      </div>
+      <div style="height:220px;cursor:pointer"><canvas id="dailyPnlChart"></canvas></div>
+      <div id="dailyPnlSummary" style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)"></div>
+      <div id="dailyPnlDetail" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--text)" id="dailyPnlDetailTitle"></div>
+          <button onclick="document.getElementById('dailyPnlDetail').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);padding:0">✕</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table" style="font-size:12px" id="dailyPnlDetailTable">
+            <thead><tr>
+              <th>Symbol</th>
+              <th class="right">Prev Close</th>
+              <th class="right">Close</th>
+              <th class="right">Change</th>
+              <th class="right">Qty</th>
+              <th class="right">P&amp;L</th>
+            </tr></thead>
+            <tbody id="dailyPnlDetailBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1861,6 +1968,12 @@
   let depthMap = {};            // symbol → {imbalance, totalBuyQty, totalSellQty}
   let _sl52wMap = {};           // symbol → 52-week low price
   let _sl52wReady = false;      // true only after 52w fetch completes
+  let _buyDates      = JSON.parse(localStorage.getItem('nepse_buy_dates_v1') || '{}'); // symbol → YYYY-MM-DD
+  let _priceDataDate = null; // Date object: when liveMap was last populated
+  let _dailyPnlChart = null;
+  let _dailyPnlRange = 30;
+  let _dailyPnlFrom  = null;  // custom date range start (YYYY-MM-DD)
+  let _dailyPnlTo    = null;  // custom date range end (YYYY-MM-DD)
   let _slChartData = {};        // symbol → [{businessDate, closePrice, lowPrice}, ...]
   let depthData = [];           // full depth array
   let companyMap = {};          // symbol → {sectorName, securityName}
@@ -2032,6 +2145,7 @@
       allStocks = data||[];
       // build live map for portfolio use
       liveMap = {};
+      _priceDataDate = new Date();
       allStocks.forEach(s => { liveMap[s.symbol] = s; });
       document.getElementById('stockCount').textContent = `${allStocks.length} securities`;
       filterStocks();
@@ -3534,6 +3648,78 @@
   }
   function onFileSelect(e) { const f=e.target.files[0]; if(f) parsePDF(f); }
 
+  async function onTxHistorySelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('txHistoryStatus');
+    status.textContent = '⏳ Parsing…';
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+      }
+      const parsed = extractTxHistory(text);
+      const count = Object.keys(parsed).length;
+      if (!count) { status.textContent = '⚠️ No transactions found'; return; }
+      // Merge: only overwrite if not manually set
+      Object.entries(parsed).forEach(([sym, date]) => {
+        if (!_buyDates[sym]) _buyDates[sym] = date;
+      });
+      localStorage.setItem('nepse_buy_dates_v1', JSON.stringify(_buyDates));
+
+      // Build feedback
+      const matched  = portfolio.filter(h => _buyDates[h.symbol]);
+      const missing  = portfolio.filter(h => !_buyDates[h.symbol]);
+      status.innerHTML = `✅ <span style="text-decoration:underline;cursor:pointer">${matched.length} matched · ${missing.length} missing — details</span>`;
+
+      document.getElementById('txImportModalBody').innerHTML = `
+        <div style="margin-bottom:14px;padding:10px 14px;border-radius:8px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2)">
+          <div style="font-weight:700;color:#4ade80;margin-bottom:8px">✅ ${matched.length} stocks matched</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${matched.map(h => `<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(34,197,94,.12);color:#4ade80">
+              ${h.symbol} <span style="color:rgba(255,255,255,.4);font-size:10px">${_buyDates[h.symbol]}</span>
+            </span>`).join('')}
+          </div>
+        </div>
+        ${missing.length ? `
+        <div style="padding:10px 14px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+          <div style="font-weight:700;color:#f87171;margin-bottom:6px">⚠️ ${missing.length} stocks not found in PDF</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:8px">These stocks have no buy date — all historical data will be included for them.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${missing.map(h => `<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(239,68,68,.12);color:#f87171">${h.symbol}</span>`).join('')}
+          </div>
+        </div>` : ''}`;
+
+      renderPortfolio();
+      renderDailyPnl();
+    } catch (err) {
+      status.textContent = '❌ Failed to parse PDF';
+      console.error(err);
+    }
+    e.target.value = '';
+  }
+
+  function extractTxHistory(text) {
+    // Match rows: S.N. SYMBOL DATE CREDIT_QTY - or digits DEBIT_QTY BALANCE DESC
+    const re = /\d+\.\s+([A-Z][A-Z0-9]{1,14})\s+(\d{4}-\d{2}-\d{2})\s+(\d+)\s*[-–]\s+[\d.]+/g;
+    const earliest = {};
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const sym  = m[1];
+      const date = m[2];
+      const qty  = parseInt(m[3]);
+      if (qty > 0) {
+        // Keep the earliest credit date per symbol
+        if (!earliest[sym] || date < earliest[sym]) earliest[sym] = date;
+      }
+    }
+    return earliest;
+  }
+
   async function parsePDF(file) {
     document.getElementById('uploadZone').innerHTML = `<span class="upload-icon">⏳</span><h2>Parsing PDF...</h2><p>Please wait</p>`;
     try {
@@ -3658,20 +3844,287 @@
     if (!card) return;
     const withData = data.filter(h => h.todayPnl != null);
     if (!withData.length) { card.style.display = 'none'; return; }
-    const total = withData.reduce((s, h) => s + h.todayPnl, 0);
-    const winners = withData.filter(h => h.todayPnl > 0).length;
-    const losers  = withData.filter(h => h.todayPnl < 0).length;
-    const isGain  = total >= 0;
+    const total      = withData.reduce((s, h) => s + h.todayPnl, 0);
+    const totalValue = withData.reduce((s, h) => s + (h.liveValue || 0), 0);
+    const pct        = totalValue > 0 ? (total / totalValue * 100).toFixed(2) : null;
+    const winners    = withData.filter(h => h.todayPnl > 0).length;
+    const losers     = withData.filter(h => h.todayPnl < 0).length;
+    const neutral    = withData.filter(h => h.todayPnl === 0).length;
+    const isGain     = total >= 0;
+    const color      = isGain ? '#4ade80' : '#f87171';
     card.style.display = 'flex';
     card.style.background = isGain
       ? 'linear-gradient(135deg,#052e16 0%,#14532d 100%)'
       : 'linear-gradient(135deg,#450a0a 0%,#7f1d1d 100%)';
     card.style.border = `1px solid ${isGain ? '#16a34a' : '#dc2626'}`;
-    document.getElementById('todayPnlValue').style.color = isGain ? '#4ade80' : '#f87171';
-    document.getElementById('todayPnlValue').textContent =
-      `${isGain ? '+' : ''}Rs ${fmt(total, 0)}`;
-    document.getElementById('todayPnlBreakdown').textContent =
-      `${withData.length} holdings tracked · ${winners} up · ${losers} down`;
+    document.getElementById('todayPnlValue').style.color = color;
+    document.getElementById('todayPnlValue').innerHTML =
+      `<span>${isGain ? '+' : ''}Rs ${fmt(total, 0)}</span>` +
+      (pct != null ? `<span style="font-size:14px;font-weight:600;margin-left:10px;opacity:.85">${isGain ? '+' : ''}${pct}%</span>` : '');
+    const dataDate    = _priceDataDate || new Date();
+    const today       = new Date();
+    const yesterday   = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const isToday     = dataDate.toDateString() === today.toDateString();
+    const isYesterday = dataDate.toDateString() === yesterday.toDateString();
+    const dateLabel   = isToday ? 'Today' : isYesterday ? 'Yesterday' : dataDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    document.getElementById('todayPnlLabel').textContent = `Portfolio P&L · ${dateLabel}`;
+    document.getElementById('todayPnlBreakdown').innerHTML =
+      `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;align-items:center;padding:4px 14px;border-radius:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);min-width:52px">
+          <span style="font-size:18px;font-weight:700;color:#fff;line-height:1">${withData.length}</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.5);margin-top:2px">Holdings</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:#4ade80;min-width:24px;text-align:right">${winners}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,.55)">Advanced</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:#f87171;min-width:24px;text-align:right">${losers}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,.55)">Declined</span>
+          </div>
+          ${neutral ? `<div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:#e2e8f0;min-width:24px;text-align:right">${neutral}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,.55)">Unchanged</span>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function estimateBuyDate(symbol, avgBuy) {
+    const bars = _slChartData[symbol] || [];
+    if (!bars.length || !avgBuy) return '';
+    let best = null, bestDiff = Infinity;
+    bars.forEach(b => {
+      if (!b.closePrice) return;
+      const diff = Math.abs(b.closePrice - avgBuy);
+      if (diff < bestDiff) { bestDiff = diff; best = b.businessDate; }
+    });
+    return best || '';
+  }
+
+  function saveBuyDate(symbol, date) {
+    if (date) _buyDates[symbol] = date;
+    else delete _buyDates[symbol];
+    localStorage.setItem('nepse_buy_dates_v1', JSON.stringify(_buyDates));
+    renderDailyPnl();
+  }
+
+  function renderDailyPnl() {
+    if (!portfolio.length || !Object.keys(_slChartData).length) return;
+    const panel = document.getElementById('dailyPnlPanel');
+    if (!panel) return;
+
+    // Build date → portfolio value map (only include stock from its buy date onward)
+    const dateValueMap = {};
+    portfolio.forEach(h => {
+      const bars    = _slChartData[h.symbol] || [];
+      const buyDate = _buyDates[h.symbol] || null;
+      bars.forEach(b => {
+        if (!b.closePrice) return;
+        if (buyDate && b.businessDate < buyDate) return;
+        dateValueMap[b.businessDate] = (dateValueMap[b.businessDate] || 0) + b.closePrice * h.qty;
+      });
+    });
+
+    const dates = Object.keys(dateValueMap).sort();
+    if (dates.length < 2) return;
+
+    const slice = (_dailyPnlFrom && _dailyPnlTo)
+      ? dates.filter(d => d >= _dailyPnlFrom && d <= _dailyPnlTo)
+      : dates.slice(-_dailyPnlRange);
+    const labels = slice;
+    const pnls   = slice.map((d, i) => {
+      if (i === 0) {
+        const prevIdx = dates.indexOf(d) - 1;
+        return prevIdx >= 0 ? +(dateValueMap[d] - dateValueMap[dates[prevIdx]]).toFixed(0) : 0;
+      }
+      return +(dateValueMap[d] - dateValueMap[slice[i - 1]]).toFixed(0);
+    });
+
+    const colors      = pnls.map(v => v >= 0 ? 'rgba(34,197,94,.75)' : 'rgba(239,68,68,.75)');
+    const borderColors = pnls.map(v => v >= 0 ? '#16a34a' : '#dc2626');
+    const values      = slice.map(d => dateValueMap[d] || 0);
+
+    if (_dailyPnlChart) _dailyPnlChart.destroy();
+    _dailyPnlChart = new Chart(document.getElementById('dailyPnlChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Daily P&L (Rs)',
+            data: pnls,
+            backgroundColor: colors,
+            borderColor: borderColors,
+            borderWidth: 1,
+            borderRadius: 3,
+            yAxisID: 'yPnl',
+            order: 2
+          },
+          {
+            label: 'Portfolio Value (Rs)',
+            data: values,
+            type: 'line',
+            yAxisID: 'yValue',
+            borderColor: 'rgba(99,102,241,.8)',
+            backgroundColor: 'rgba(99,102,241,.08)',
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.3,
+            fill: true,
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        onClick: (_, elements) => {
+          const bar = elements.find(e => e.datasetIndex === 0);
+          if (!bar) return;
+          renderDailyPnlDetail(slice[bar.index], dates);
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { color: '#64748b', font: { size: 10 }, boxWidth: 12, padding: 12 }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: ctx => {
+                const v = ctx.parsed.y;
+                if (ctx.datasetIndex === 0)
+                  return ` P&L: ${v >= 0 ? '+' : ''}Rs ${v.toLocaleString()}`;
+                return ` Value: Rs ${v.toLocaleString()}`;
+              },
+              footer: () => 'Click bar for stock breakdown'
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+          yPnl: {
+            position: 'left',
+            ticks: { color: '#64748b', font: { size: 10 }, callback: v => `${v >= 0 ? '+' : ''}${(v/1000).toFixed(0)}k` },
+            grid: { color: 'rgba(255,255,255,.06)' }
+          },
+          yValue: {
+            position: 'right',
+            ticks: { color: '#6366f1', font: { size: 10 }, callback: v => `Rs ${(v/100000).toFixed(1)}L` },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+
+    // Summary stats
+    const gains  = pnls.filter(v => v > 0);
+    const losses = pnls.filter(v => v < 0);
+    const cumPnl = pnls.reduce((s, v) => s + v, 0);
+    document.getElementById('dailyPnlSummary').innerHTML = [
+      `<span>Period: <strong style="color:var(--text)">${slice.length} days</strong></span>`,
+      `<span>Cumulative: <strong style="${cumPnl >= 0 ? 'color:#4ade80' : 'color:#f87171'}">${cumPnl >= 0 ? '+' : ''}Rs ${cumPnl.toLocaleString()}</strong></span>`,
+      `<span>Gain days: <strong style="color:#4ade80">${gains.length}</strong></span>`,
+      `<span>Loss days: <strong style="color:#f87171">${losses.length}</strong></span>`,
+      gains.length ? `<span>Best day: <strong style="color:#4ade80">+Rs ${Math.max(...gains).toLocaleString()}</strong></span>` : '',
+      losses.length ? `<span>Worst day: <strong style="color:#f87171">Rs ${Math.min(...losses).toLocaleString()}</strong></span>` : '',
+    ].filter(Boolean).join('');
+
+    panel.style.display = 'block';
+  }
+
+  function setDailyPnlRange(days) {
+    _dailyPnlRange = days;
+    _dailyPnlFrom = null;
+    _dailyPnlTo   = null;
+    const fromEl = document.getElementById('dpnlFrom');
+    const toEl   = document.getElementById('dpnlTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    document.getElementById('dpnlClearBtn').style.display = 'none';
+    ['30','90','180','260'].forEach(d => {
+      const btn = document.getElementById(`dpnlBtn${d}`);
+      if (!btn) return;
+      const active = +d === days;
+      btn.style.background = active ? 'var(--accent)' : 'var(--surface2)';
+      btn.style.color = active ? '#fff' : 'var(--text)';
+    });
+    renderDailyPnl();
+  }
+
+  function applyDailyPnlDateRange() {
+    const from = document.getElementById('dpnlFrom').value;
+    const to   = document.getElementById('dpnlTo').value;
+    if (!from || !to || from > to) return;
+    _dailyPnlFrom = from;
+    _dailyPnlTo   = to;
+    // deactivate preset buttons
+    ['30','90','180','260'].forEach(d => {
+      const btn = document.getElementById(`dpnlBtn${d}`);
+      if (btn) { btn.style.background = 'var(--surface2)'; btn.style.color = 'var(--text)'; }
+    });
+    document.getElementById('dpnlClearBtn').style.display = '';
+    renderDailyPnl();
+  }
+
+  function clearDailyPnlDateRange() {
+    document.getElementById('dpnlFrom').value = '';
+    document.getElementById('dpnlTo').value   = '';
+    document.getElementById('dpnlClearBtn').style.display = 'none';
+    setDailyPnlRange(_dailyPnlRange || 30);
+  }
+
+  function renderDailyPnlDetail(date, allDates) {
+    const detail = document.getElementById('dailyPnlDetail');
+    const body   = document.getElementById('dailyPnlDetailBody');
+    if (!detail || !body) return;
+
+    const prevDate = allDates[allDates.indexOf(date) - 1] || null;
+
+    const rows = portfolio.map(h => {
+      const buyDate = _buyDates[h.symbol] || null;
+      if (buyDate && date < buyDate) return null;
+      const bars    = _slChartData[h.symbol] || [];
+      const todayBar = bars.find(b => b.businessDate === date);
+      const prevBar  = prevDate ? bars.find(b => b.businessDate === prevDate) : null;
+      if (!todayBar?.closePrice) return null;
+      const close     = todayBar.closePrice;
+      const prevClose = prevBar?.closePrice || null;
+      const change    = prevClose ? +(close - prevClose).toFixed(2) : null;
+      const changePct = prevClose ? +((change / prevClose) * 100).toFixed(2) : null;
+      const pnl       = change != null ? +(change * h.qty).toFixed(0) : null;
+      return { symbol: h.symbol, qty: h.qty, prevClose, close, change, changePct, pnl };
+    }).filter(Boolean).filter(r => r.pnl != null);
+
+    if (!rows.length) return;
+
+    rows.sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+
+    const totalPnl = rows.reduce((s, r) => s + r.pnl, 0);
+    const isGain   = totalPnl >= 0;
+
+    document.getElementById('dailyPnlDetailTitle').innerHTML =
+      `${date} &nbsp;—&nbsp; Total: <span style="color:${isGain ? '#4ade80' : '#f87171'};font-weight:700">${isGain ? '+' : ''}Rs ${totalPnl.toLocaleString()}</span>`;
+
+    body.innerHTML = rows.map(r => {
+      const pnlColor = r.pnl > 0 ? 'color:#4ade80' : r.pnl < 0 ? 'color:#f87171' : 'color:var(--muted)';
+      const chgColor = r.change > 0 ? 'color:#4ade80' : r.change < 0 ? 'color:#f87171' : 'color:var(--muted)';
+      return `<tr>
+        <td><strong>${r.symbol}</strong></td>
+        <td class="right" style="color:var(--muted)">${r.prevClose != null ? r.prevClose.toLocaleString() : '—'}</td>
+        <td class="right">${r.close.toLocaleString()}</td>
+        <td class="right" style="${chgColor}">${r.change != null ? `${r.change >= 0 ? '+' : ''}${r.change} (${r.changePct >= 0 ? '+' : ''}${r.changePct}%)` : '—'}</td>
+        <td class="right" style="color:var(--muted)">${r.qty}</td>
+        <td class="right" style="${pnlColor};font-weight:600">${r.pnl >= 0 ? '+' : ''}Rs ${Math.abs(r.pnl).toLocaleString()}</td>
+      </tr>`;
+    }).join('');
+
+    detail.style.display = 'block';
+    detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function renderPfStats(data) {
@@ -3770,7 +4223,7 @@
     else if(pfCurrentFilter==='unknown') filtered = data.filter(h=>h.cost==null);
 
     const tbody = document.getElementById('pfTable');
-    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="9"><div class="no-data">No holdings match filter</div></td></tr>`; return; }
+    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="10"><div class="no-data">No holdings match filter</div></td></tr>`; return; }
 
     tbody.innerHTML = filtered.map(h=>{
       const pnlCls = h.liveGain==null?'change-neutral':h.liveGain>=0?'change-up':'change-down';
@@ -3778,11 +4231,18 @@
       const liveLtpCell = h.liveLtp
         ? `${fmt(h.liveLtp)} ${liveDiff!=null?`<small class="${changeClass(liveDiff)}">(${liveDiff>=0?'+':''}${fmt(liveDiff)})</small>`:''}`
         : '<span style="color:var(--muted)">—</span>';
+      const savedDate = _buyDates[h.symbol] || '';
 
       return `<tr>
         <td><span class="symbol-badge">${h.symbol}</span></td>
         <td class="right">${h.qty}</td>
         <td class="right">${h.avgBuy!=null?fmt(h.avgBuy):'<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right">
+          <input type="date" value="${savedDate}"
+            title="${savedDate ? 'From transaction history — click to override' : 'Import Transaction History PDF to auto-fill'}"
+            style="font-size:10px;padding:2px 4px;border-radius:4px;border:1px solid ${savedDate ? 'var(--accent)' : 'var(--border)'};background:var(--surface2);color:${savedDate ? 'var(--text)' : 'var(--muted)'};width:108px"
+            onchange="saveBuyDate('${h.symbol}', this.value)">
+        </td>
         <td class="right">${fmt(h.ltp)}</td>
         <td class="right">${liveLtpCell}</td>
         <td class="right" style="font-weight:600">Rs ${fmt(h.liveValue,0)}</td>
@@ -4221,6 +4681,7 @@
       } catch {}
     }));
     _sl52wReady = true;
+    renderDailyPnl();
     // Re-render with 52w data now available
     if (portfolio.length && Object.keys(liveMap).length) {
       const enriched = portfolio.map(h => {
