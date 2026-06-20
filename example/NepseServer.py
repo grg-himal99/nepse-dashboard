@@ -60,7 +60,14 @@ _FETCHERS = {
 
 # Priority keys fetched in parallel at startup so the cache is warm before the
 # first HTTP request arrives.
-_WARMUP_KEYS = ["summary", "nepseIndex", "isNepseOpen", "topGainers", "topLosers", "priceVolume"]
+_WARMUP_KEYS = [
+    "summary",
+    "nepseIndex",
+    "isNepseOpen",
+    "topGainers",
+    "topLosers",
+    "priceVolume",
+]
 
 
 def _warmup_cache():
