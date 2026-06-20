@@ -2053,14 +2053,17 @@
   async function loadSummary() {
     try {
       const d = await apiFetch('/Summary');
+      const mcap = d['Total Market Capitalization Rs:'];
       document.getElementById('statsGrid').innerHTML = `
         <div class="stat-card"><div class="stat-label">Total Turnover</div><div class="stat-value">${fmtCrore(d['Total Turnover Rs:'])}</div><div class="stat-sub">Today</div></div>
         <div class="stat-card"><div class="stat-label">Traded Shares</div><div class="stat-value">${fmt(d['Total Traded Shares'],0)}</div><div class="stat-sub">Shares</div></div>
         <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">${fmt(d['Total Transactions'],0)}</div><div class="stat-sub">Trades</div></div>
         <div class="stat-card"><div class="stat-label">Scrips Traded</div><div class="stat-value">${fmt(d['Total Scrips Traded'],0)}</div><div class="stat-sub">Securities</div></div>
-        <div class="stat-card"><div class="stat-label">Market Cap</div><div class="stat-value">${fmtCrore(d['Total Market Capitalization Rs:'])}</div><div class="stat-sub">Total</div></div>
+        <div class="stat-card"><div class="stat-label">Market Cap</div><div class="stat-value">${fmtCrore(mcap)}</div><div class="stat-sub">Total</div></div>
         <div class="stat-card"><div class="stat-label">Float Market Cap</div><div class="stat-value">${fmtCrore(d['Total Float Market Capitalization Rs:'])}</div><div class="stat-sub">Float</div></div>
       `;
+      // Retry once after 6s if market cap is still missing (server cache still warming up)
+      if (mcap == null) setTimeout(loadSummary, 6000);
     } catch { document.getElementById('statsGrid').innerHTML=`<div class="error-msg">Failed to load summary</div>`; }
   }
 

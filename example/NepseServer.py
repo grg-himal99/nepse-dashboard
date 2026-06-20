@@ -41,26 +41,48 @@ def _safe_fetch(key, fn):
         print(f"[auto-refresh] failed to update {key}: {e}")
 
 
+_FETCHERS = {
+    "summary": lambda: nepse.getSummary(),
+    "nepseIndex": lambda: nepse.getNepseIndex(),
+    "nepseSubIndices": lambda: nepse.getNepseSubIndices(),
+    "topGainers": lambda: nepse.getTopGainers(),
+    "topLosers": lambda: nepse.getTopLosers(),
+    "topTenTrade": lambda: nepse.getTopTenTradeScrips(),
+    "topTenTransaction": lambda: nepse.getTopTenTransactionScrips(),
+    "topTenTurnover": lambda: nepse.getTopTenTurnoverScrips(),
+    "supplyDemand": lambda: nepse.getSupplyDemand(),
+    "isNepseOpen": lambda: nepse.isNepseOpen(),
+    "priceVolume": lambda: nepse.getPriceVolume(),
+    "liveMarket": lambda: nepse.getLiveMarket(),
+    "companyList": lambda: nepse.getCompanyList(),
+    "securityList": lambda: nepse.getSecurityList(),
+}
+
+# Priority keys fetched in parallel at startup so the cache is warm before the
+# first HTTP request arrives.
+_WARMUP_KEYS = [
+    "summary",
+    "nepseIndex",
+    "isNepseOpen",
+    "topGainers",
+    "topLosers",
+    "priceVolume",
+]
+
+
+def _warmup_cache():
+    print("[warmup] pre-populating cache in parallel…")
+    with ThreadPoolExecutor(max_workers=len(_WARMUP_KEYS)) as ex:
+        futures = {ex.submit(_safe_fetch, k, _FETCHERS[k]): k for k in _WARMUP_KEYS}
+        for f in as_completed(futures):
+            pass  # errors already logged in _safe_fetch
+    print("[warmup] done.")
+
+
 def _refresh_loop():
-    fetchers = {
-        "summary": nepse.getSummary,
-        "nepseIndex": nepse.getNepseIndex,
-        "nepseSubIndices": nepse.getNepseSubIndices,
-        "topGainers": nepse.getTopGainers,
-        "topLosers": nepse.getTopLosers,
-        "topTenTrade": nepse.getTopTenTradeScrips,
-        "topTenTransaction": nepse.getTopTenTransactionScrips,
-        "topTenTurnover": nepse.getTopTenTurnoverScrips,
-        "supplyDemand": nepse.getSupplyDemand,
-        "isNepseOpen": nepse.isNepseOpen,
-        "priceVolume": nepse.getPriceVolume,
-        "liveMarket": nepse.getLiveMarket,
-        "companyList": nepse.getCompanyList,
-        "securityList": nepse.getSecurityList,
-    }
     while True:
         print("[auto-refresh] refreshing data...")
-        for key, fn in fetchers.items():
+        for key, fn in _FETCHERS.items():
             _safe_fetch(key, fn)
         print("[auto-refresh] done.")
         time.sleep(REFRESH_INTERVAL)
@@ -71,6 +93,7 @@ def _get(key):
         return _cache.get(key)
 
 
+_warmup_cache()
 _refresh_thread = threading.Thread(target=_refresh_loop, daemon=True)
 _refresh_thread.start()
 
