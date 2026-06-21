@@ -2148,7 +2148,6 @@
       allStocks = data||[];
       // build live map for portfolio use
       liveMap = {};
-      _priceDataDate = new Date();
       allStocks.forEach(s => { liveMap[s.symbol] = s; });
       document.getElementById('stockCount').textContent = `${allStocks.length} securities`;
       filterStocks();
@@ -3864,12 +3863,27 @@
     document.getElementById('todayPnlValue').innerHTML =
       `<span>${isGain ? '+' : ''}Rs ${fmt(total, 0)}</span>` +
       (pct != null ? `<span style="font-size:14px;font-weight:600;margin-left:10px;opacity:.85">${isGain ? '+' : ''}${pct}%</span>` : '');
-    const dataDate    = _priceDataDate || new Date();
-    const today       = new Date();
-    const yesterday   = new Date(today); yesterday.setDate(today.getDate() - 1);
-    const isToday     = dataDate.toDateString() === today.toDateString();
-    const isYesterday = dataDate.toDateString() === yesterday.toDateString();
-    const dateLabel   = isToday ? 'Today' : isYesterday ? 'Yesterday' : dataDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Derive actual last trading date from chart data (businessDate = YYYY-MM-DD from NEPSE)
+    // Best source: actual last businessDate from 52-week chart data
+    // Fallback: roll back from today to the last Mon-Fri (NEPSE trading days)
+    const lastTradingDateStr = Object.values(_slChartData)
+      .flatMap(bars => bars.map(b => b.businessDate)).filter(Boolean).sort().pop()
+      || (() => { const d = new Date(); const dow = d.getDay();
+                  if (dow === 0) d.setDate(d.getDate() - 2);  // Sun → Fri
+                  else if (dow === 6) d.setDate(d.getDate() - 1); // Sat → Fri
+                  return d.toLocaleDateString('en-CA'); })();
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr  = yestDate.toLocaleDateString('en-CA');
+    let dateLabel;
+    if (lastTradingDateStr === todayStr) {
+      dateLabel = 'Today';
+    } else if (lastTradingDateStr === yestStr) {
+      dateLabel = 'Yesterday';
+    } else {
+      const d = new Date(lastTradingDateStr + 'T00:00:00');
+      dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
     document.getElementById('todayPnlLabel').textContent = `Portfolio P&L · ${dateLabel}`;
     document.getElementById('todayPnlBreakdown').innerHTML =
       `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -4693,10 +4707,12 @@
         const liveValue = liveLtp ? liveLtp * h.qty : h.value;
         const liveGain  = h.cost!=null && liveLtp ? liveValue - h.cost : h.gain;
         const livePct   = h.cost!=null && liveLtp ? (liveGain/h.cost)*100 : h.pct;
-        return {...h, liveLtp, liveValue, liveGain, livePct};
+        const todayPnl  = (live && liveLtp) ? (liveLtp - (live.previousClose||liveLtp)) * h.qty : null;
+        return {...h, liveLtp, liveValue, liveGain, livePct, todayPnl};
       });
       renderSLTable(enriched);
       renderSLAlertCard(enriched);
+      renderTodayPnl(enriched);
       document.getElementById('slPanelNote').textContent = 'Support-based (52w low − 2%) · Loaded';
     }
   }
