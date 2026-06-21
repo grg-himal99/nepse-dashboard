@@ -1692,7 +1692,7 @@
         </div>
       </div>
       <div style="height:220px;cursor:pointer"><canvas id="dailyPnlChart"></canvas></div>
-      <div id="dailyPnlSummary" style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)"></div>
+      <div id="dailyPnlSummary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:14px"></div>
       <div id="dailyPnlDetail" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:13px;font-weight:700;color:var(--text)" id="dailyPnlDetailTitle"></div>
@@ -4038,18 +4038,41 @@
       }
     });
 
-    // Summary stats
-    const gains  = pnls.filter(v => v > 0);
-    const losses = pnls.filter(v => v < 0);
-    const cumPnl = pnls.reduce((s, v) => s + v, 0);
+    // Performance metrics
+    const gains    = pnls.filter(v => v > 0);
+    const losses   = pnls.filter(v => v < 0);
+    const tradeDays = pnls.filter(v => v !== 0).length;
+    const cumPnl   = pnls.reduce((s, v) => s + v, 0);
+    const winRate  = tradeDays ? Math.round(gains.length / tradeDays * 100) : 0;
+    const avgDaily = pnls.length ? Math.round(cumPnl / pnls.length) : 0;
+    const avgGain  = gains.length ? Math.round(gains.reduce((s,v)=>s+v,0)/gains.length) : 0;
+    const avgLoss  = losses.length ? Math.round(losses.reduce((s,v)=>s+v,0)/losses.length) : 0;
+    const bestDay  = gains.length ? Math.max(...gains) : 0;
+    const worstDay = losses.length ? Math.min(...losses) : 0;
+
+    // Max drawdown: largest peak-to-trough drop in portfolio value
+    let maxDD = 0, peak = values[0] || 0;
+    values.forEach(v => { if (v > peak) peak = v; const dd = peak - v; if (dd > maxDD) maxDD = dd; });
+
+    const mCard = (label, value, color, sub='') => `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px;white-space:nowrap">${label}</div>
+        <div style="font-size:13px;font-weight:700;color:${color};white-space:nowrap">${value}</div>
+        ${sub ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${sub}</div>` : ''}
+      </div>`;
+
+    const fmtRs = v => `${v>=0?'+':''}Rs ${Math.abs(v).toLocaleString()}`;
+
     document.getElementById('dailyPnlSummary').innerHTML = [
-      `<span>Period: <strong style="color:var(--text)">${slice.length} days</strong></span>`,
-      `<span>Cumulative: <strong style="${cumPnl >= 0 ? 'color:#4ade80' : 'color:#f87171'}">${cumPnl >= 0 ? '+' : ''}Rs ${cumPnl.toLocaleString()}</strong></span>`,
-      `<span>Gain days: <strong style="color:#4ade80">${gains.length}</strong></span>`,
-      `<span>Loss days: <strong style="color:#f87171">${losses.length}</strong></span>`,
-      gains.length ? `<span>Best day: <strong style="color:#4ade80">+Rs ${Math.max(...gains).toLocaleString()}</strong></span>` : '',
-      losses.length ? `<span>Worst day: <strong style="color:#f87171">Rs ${Math.min(...losses).toLocaleString()}</strong></span>` : '',
-    ].filter(Boolean).join('');
+      mCard('Cumulative P&L', fmtRs(cumPnl), cumPnl>=0?'#4ade80':'#f87171', `${slice.length} days`),
+      mCard('Win Rate', `${winRate}%`, winRate>=50?'#4ade80':'#f87171', `${gains.length}W / ${losses.length}L`),
+      mCard('Avg Daily', fmtRs(avgDaily), avgDaily>=0?'#4ade80':'#f87171'),
+      mCard('Max Drawdown', `Rs ${maxDD.toLocaleString()}`, '#f87171'),
+      mCard('Avg Gain', `+Rs ${avgGain.toLocaleString()}`, '#4ade80'),
+      mCard('Avg Loss', `Rs ${Math.abs(avgLoss).toLocaleString()}`, '#f87171'),
+      mCard('Best Day', `+Rs ${bestDay.toLocaleString()}`, '#4ade80'),
+      mCard('Worst Day', `Rs ${Math.abs(worstDay).toLocaleString()}`, '#f87171'),
+    ].join('');
 
     panel.style.display = 'block';
   }
