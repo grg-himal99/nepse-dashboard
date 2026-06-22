@@ -1950,7 +1950,7 @@
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  const API = 'http://127.0.0.1:8000';
+  const API = window.location.origin;
 
   // ── State ─────────────────────────────────────────
   let allStocks = [];
