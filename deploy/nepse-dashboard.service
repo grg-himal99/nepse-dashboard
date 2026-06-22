@@ -1,0 +1,15 @@
+[Unit]
+Description=NEPSE Dashboard
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStartPre=-/usr/bin/docker stop nepse-dashboard
+ExecStartPre=-/usr/bin/docker rm nepse-dashboard
+ExecStart=/usr/bin/docker run --rm --name nepse-dashboard -p 8000:8000 nepse-dashboard:latest
+ExecStop=/usr/bin/docker stop nepse-dashboard
+
+[Install]
+WantedBy=multi-user.target
