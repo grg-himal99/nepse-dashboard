@@ -281,6 +281,10 @@
 
     th.right, td.right { text-align: right; }
     th[onclick]:hover { color: var(--text); }
+    #chartContainer { display: flex; flex-direction: column; gap: 16px; }
+    .pf-table th, .pf-table td { padding: 9px 10px; white-space: nowrap; }
+    .pf-table th:first-child, .pf-table td:first-child { padding-left: 16px; }
+    .pf-table th:last-child,  .pf-table td:last-child  { padding-right: 16px; }
     tr:hover td { background: var(--surface2); }
 
     td {
@@ -1085,10 +1089,10 @@
           <table>
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th class="right">LTP</th>
-                <th class="right">Change</th>
-                <th class="right">% Change</th>
+                <th onclick="glSort('symbol')" style="cursor:pointer;user-select:none" id="glTh-symbol">Symbol</th>
+                <th class="right" onclick="glSort('ltp')" style="cursor:pointer;user-select:none" id="glTh-ltp">LTP</th>
+                <th class="right" onclick="glSort('pointChange')" style="cursor:pointer;user-select:none" id="glTh-pointChange">Change</th>
+                <th class="right" onclick="glSort('percentageChange')" style="cursor:pointer;user-select:none" id="glTh-percentageChange">% Change</th>
               </tr>
             </thead>
             <tbody id="glTable"><tr><td colspan="4"><div class="no-data">Loading...</div></td></tr></tbody>
@@ -1480,9 +1484,16 @@
       <button class="broker-period-btn chart-toggle"        data-period="1w" onclick="loadBrokerSummary('1w')">1W</button>
       <button class="broker-period-btn chart-toggle"        data-period="2w" onclick="loadBrokerSummary('2w')">2W</button>
       <button class="broker-period-btn chart-toggle"        data-period="1m" onclick="loadBrokerSummary('1m')">1M</button>
-      <input type="text" id="brokerSearchInput" placeholder="🔍 Search broker name or #..."
-        oninput="brokerSearchStr=this.value;renderBrokerTable()"
-        style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;width:180px;margin-left:8px">
+      <div style="position:relative;margin-left:auto;min-width:260px;max-width:340px;flex:1">
+        <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted);pointer-events:none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="brokerSearchInput" placeholder="Search broker name or #..."
+          oninput="brokerSearchStr=this.value;renderBrokerTable();document.getElementById('brokerSearchClear').style.display=this.value?'block':'none'"
+          style="width:100%;box-sizing:border-box;padding:9px 36px 9px 38px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;outline:none;transition:border-color 0.15s,box-shadow 0.15s"
+          onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)'"
+          onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+        <button onclick="document.getElementById('brokerSearchInput').value='';brokerSearchStr='';renderBrokerTable();this.style.display='none'" id="brokerSearchClear"
+          style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px 4px">✕</button>
+      </div>
     </div>
   </div>
 
@@ -1546,7 +1557,7 @@
   </div>
 
   <!-- Portfolio content (shown after upload) -->
-  <div id="pfContent" style="display:none">
+  <div id="pfContent" style="display:none;flex-direction:column;gap:20px">
 
     <!-- Header row -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
@@ -1655,8 +1666,8 @@
       <div style="font-size:11px;color:var(--muted);padding:6px 2px 8px">
         💡 <strong style="color:var(--text)">Buy Date</strong> is used to filter the Daily P&amp;L chart — import your MeroShare <strong style="color:var(--text)">Transaction History PDF</strong> above to auto-fill all dates accurately.
       </div>
-      <div class="scrollable-table" style="max-height:500px">
-        <table>
+      <div class="scrollable-table" style="max-height:500px;overflow-x:auto">
+        <table class="pf-table">
           <thead id="pfTableHead">
             <tr>
               <th onclick="pfSort('symbol')" style="cursor:pointer;user-select:none" id="pfTh-symbol">Symbol</th>
@@ -1668,6 +1679,7 @@
               <th class="right" onclick="pfSort('liveValue')" style="cursor:pointer;user-select:none" id="pfTh-liveValue">Current Value</th>
               <th class="right" onclick="pfSort('liveGain')" style="cursor:pointer;user-select:none" id="pfTh-liveGain">Overall P&amp;L</th>
               <th class="right" onclick="pfSort('livePct')" style="cursor:pointer;user-select:none" id="pfTh-livePct">% P&amp;L</th>
+              <th class="right" onclick="pfSort('todayPnl')" style="cursor:pointer;user-select:none" id="pfTh-todayPnl">Today's P&amp;L</th>
               <th class="right" id="pfTh-plan">Plan</th>
             </tr>
           </thead>
@@ -1944,6 +1956,8 @@
   let allStocks = [];
   let gainersData = [], losersData = [];
   let currentTab = 'gainers';
+  let glSortCol = null, glSortDir = -1;
+  let adSortState = { buy: { col: null, dir: -1 }, sell: { col: null, dir: -1 } };
   let subIndexChart = null, allocChart = null;
 
   let portfolio = [];           // parsed from PDF
@@ -1955,7 +1969,7 @@
       if (saved?.holdings?.length) {
         portfolio = saved.holdings;
         document.getElementById('uploadZone').style.display = 'none';
-        document.getElementById('pfContent').style.display = '';
+        document.getElementById('pfContent').style.display = 'flex';
         document.getElementById('pfAsOf').textContent =
           `${saved.name} — saved ${new Date(saved.savedAt).toLocaleString()}`;
         // kick off 52-week fetch in background (liveMap not ready yet; renderSL* fires after loadPriceVolume)
@@ -2125,9 +2139,26 @@
   }
 
   function renderGL() {
-    const data = currentTab==='gainers' ? gainersData : losersData;
+    let data = [...(currentTab==='gainers' ? gainersData : losersData)];
     const tbody = document.getElementById('glTable');
     if(!data||!data.length) { tbody.innerHTML=`<tr><td colspan="4"><div class="no-data">No data</div></td></tr>`; return; }
+
+    if(glSortCol) {
+      data.sort((a, b) => {
+        const av = a[glSortCol] ?? null, bv = b[glSortCol] ?? null;
+        if(av === null && bv === null) return 0;
+        if(av === null) return 1; if(bv === null) return -1;
+        return typeof av === 'string' ? glSortDir * av.localeCompare(bv) : glSortDir * (av - bv);
+      });
+    }
+
+    const glCols = ['symbol','ltp','pointChange','percentageChange'];
+    const glLabels = { symbol:'Symbol', ltp:'LTP', pointChange:'Change', percentageChange:'% Change' };
+    glCols.forEach(c => {
+      const th = document.getElementById('glTh-' + c);
+      if(th) th.textContent = glLabels[c] + (c === glSortCol ? (glSortDir === 1 ? ' ▲' : ' ▼') : '');
+    });
+
     tbody.innerHTML = data.map(s=>`
       <tr>
         <td><span class="symbol-badge">${s.symbol}</span></td>
@@ -2138,8 +2169,15 @@
     document.querySelector('#gl-title .dot').style.background = currentTab==='gainers'?'var(--green)':'var(--red)';
   }
 
+  function glSort(col) {
+    if(glSortCol === col) glSortDir *= -1;
+    else { glSortCol = col; glSortDir = col === 'symbol' ? 1 : -1; }
+    renderGL();
+  }
+
   function switchTab(tab, el) {
     currentTab = tab;
+    glSortCol = null; glSortDir = -1;
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
     el.classList.add('active');
     renderGL();
@@ -3305,34 +3343,64 @@
     document.getElementById('adDistTable').innerHTML  = adTableHTML(filter(adData.distribution), 'sell');
   }
 
+  function adSort(side, col) {
+    const s = adSortState[side];
+    if(s.col === col) s.dir *= -1;
+    else { s.col = col; s.dir = (col === 'symbol' || col === 'broker') ? 1 : -1; }
+    renderADTables();
+  }
+
+  function adSortInd(side, c) {
+    const s = adSortState[side];
+    return s.col === c ? (s.dir === 1 ? ' ▲' : ' ▼') : '';
+  }
+
   function adTableHTML(rows, side) {
-    if(!rows.length) return `<div style="padding:24px;text-align:center;color:var(--muted)">No results</div>`;
+    if(!rows.length) return '<div style="padding:24px;text-align:center;color:var(--muted)">No results</div>';
     const brokerLabel = side === 'buy' ? 'Buyer' : 'Seller';
     const qtyColor    = side === 'buy' ? '#4ade80' : '#f87171';
-    return `<table class="stocks-table" style="width:100%">
-      <thead><tr>
-        <th style="width:32px;color:var(--muted)">#</th>
-        <th>Symbol</th>
-        <th>${brokerLabel}</th>
-        <th class="right">Tot Qty</th>
-        <th class="right">Tot Amt</th>
-        <th class="right">Avg Rate</th>
-      </tr></thead>
-      <tbody>
-        ${rows.slice(0,50).map((r,i) => `
-          <tr class="sig-row" onclick="selectSigStock('${r.symbol}')">
-            <td style="color:var(--muted);font-size:11px">${i+1}</td>
-            <td><span class="symbol-badge">${r.symbol}</span></td>
-            <td>
-              <div style="font-size:12px;font-weight:700">${brokerName(r.broker)}</div>
-              <div style="font-size:10px;color:var(--muted)">#${r.broker}</div>
-            </td>
-            <td class="right" style="color:${qtyColor};font-weight:700">${fmtQty(r.totalQty)}</td>
-            <td class="right" style="font-size:12px">${fmtCrore(r.totalAmt)}</td>
-            <td class="right">Rs ${fmt(r.avgRate)}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    const s = adSortState[side];
+
+    let sorted = rows.slice();
+    if(s.col) {
+      const col = s.col, dir = s.dir;
+      sorted.sort(function(a, b) {
+        var av = a[col] != null ? a[col] : null;
+        var bv = b[col] != null ? b[col] : null;
+        if(av === null && bv === null) return 0;
+        if(av === null) return 1;
+        if(bv === null) return -1;
+        if(typeof av === 'string') return dir * av.localeCompare(bv);
+        return dir * (av - bv);
+      });
+    }
+
+    var rows50 = sorted.slice(0, 50);
+    var tbodyHTML = '';
+    for(var i = 0; i < rows50.length; i++) {
+      var r = rows50[i];
+      tbodyHTML += '<tr class="sig-row" onclick="selectSigStock(\'' + r.symbol + '\')">'
+        + '<td style="color:var(--muted);font-size:11px">' + (i+1) + '</td>'
+        + '<td><span class="symbol-badge">' + r.symbol + '</span></td>'
+        + '<td><div style="font-size:12px;font-weight:700">' + brokerName(r.broker) + '</div>'
+        + '<div style="font-size:10px;color:var(--muted)">#' + r.broker + '</div></td>'
+        + '<td class="right" style="color:' + qtyColor + ';font-weight:700">' + fmtQty(r.totalQty) + '</td>'
+        + '<td class="right" style="font-size:12px">' + fmtCrore(r.totalAmt) + '</td>'
+        + '<td class="right">Rs ' + fmt(r.avgRate) + '</td>'
+        + '</tr>';
+    }
+
+    return '<table class="stocks-table" style="width:100%">'
+      + '<thead><tr>'
+      + '<th style="width:32px;color:var(--muted)">#</th>'
+      + '<th onclick="adSort(\'' + side + '\',\'symbol\')" style="cursor:pointer;user-select:none">Symbol' + adSortInd(side,'symbol') + '</th>'
+      + '<th onclick="adSort(\'' + side + '\',\'broker\')" style="cursor:pointer;user-select:none">' + brokerLabel + adSortInd(side,'broker') + '</th>'
+      + '<th class="right" onclick="adSort(\'' + side + '\',\'totalQty\')" style="cursor:pointer;user-select:none">Tot Qty' + adSortInd(side,'totalQty') + '</th>'
+      + '<th class="right" onclick="adSort(\'' + side + '\',\'totalAmt\')" style="cursor:pointer;user-select:none">Tot Amt' + adSortInd(side,'totalAmt') + '</th>'
+      + '<th class="right" onclick="adSort(\'' + side + '\',\'avgRate\')" style="cursor:pointer;user-select:none">Avg Rate' + adSortInd(side,'avgRate') + '</th>'
+      + '</tr></thead>'
+      + '<tbody>' + tbodyHTML + '</tbody>'
+      + '</table>';
   }
 
   function fmtQty(n) {
@@ -3752,7 +3820,7 @@
       localStorage.setItem('nepse_portfolio_v1', JSON.stringify({ holdings: portfolio, name: file.name, savedAt }));
       document.getElementById('pfAsOf').textContent = `${file.name} — ${new Date(savedAt).toLocaleString()}`;
       document.getElementById('uploadZone').style.display = 'none';
-      document.getElementById('pfContent').style.display = '';
+      document.getElementById('pfContent').style.display = 'flex';
       renderPortfolio();
       fetchSL52wData();
     } catch(err) {
@@ -4279,7 +4347,7 @@
     });
 
     // Update header indicators
-    const cols = ['symbol','qty','avgBuy','buyDate','ltp','liveLtp','liveValue','liveGain','livePct'];
+    const cols = ['symbol','qty','avgBuy','buyDate','ltp','liveLtp','liveValue','liveGain','livePct','todayPnl'];
     cols.forEach(c => {
       const th = document.getElementById('pfTh-' + c);
       if (!th) return;
@@ -4288,7 +4356,7 @@
     });
 
     const tbody = document.getElementById('pfTable');
-    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="10"><div class="no-data">No holdings match filter</div></td></tr>`; return; }
+    if(!filtered.length) { tbody.innerHTML=`<tr><td colspan="11"><div class="no-data">No holdings match filter</div></td></tr>`; return; }
 
     tbody.innerHTML = filtered.map(h=>{
       const pnlCls = h.liveGain==null?'change-neutral':h.liveGain>=0?'change-up':'change-down';
@@ -4298,11 +4366,11 @@
         : '<span style="color:var(--muted)">—</span>';
       const savedDate = _buyDates[h.symbol] || '';
 
-      return `<tr>
+      return `<tr style="cursor:pointer" onclick="(function(){const t=document.querySelector('.nav-tab:nth-child(2)');showView('charts',t);selectChartSymbol('${h.symbol}');})()">
         <td><span class="symbol-badge">${h.symbol}</span></td>
         <td class="right">${h.qty}</td>
         <td class="right">${h.avgBuy!=null?fmt(h.avgBuy):'<span style="color:var(--muted)">—</span>'}</td>
-        <td class="right">
+        <td class="right" onclick="event.stopPropagation()">
           <input type="date" value="${savedDate}"
             title="${savedDate ? 'From transaction history — click to override' : 'Import Transaction History PDF to auto-fill'}"
             style="font-size:10px;padding:2px 4px;border-radius:4px;border:1px solid ${savedDate ? 'var(--accent)' : 'var(--border)'};background:var(--surface2);color:${savedDate ? 'var(--text)' : 'var(--muted)'};width:108px"
@@ -4313,7 +4381,8 @@
         <td class="right" style="font-weight:600">Rs ${fmt(h.liveValue,0)}</td>
         <td class="right ${pnlCls}">${h.liveGain!=null?(h.liveGain>=0?'+':'')+'Rs '+fmt(Math.abs(h.liveGain),0):'<span style="color:var(--muted)">—</span>'}</td>
         <td class="right">${h.livePct!=null?`<span class="${pnlCls}">${h.livePct>=0?'+':''}${fmt(h.livePct)}%</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-        <td class="right"><button class="plan-btn" onclick="openPlanModal('${h.symbol}')">Plan</button></td>
+        <td class="right ${h.todayPnl!=null?(h.todayPnl>=0?'change-up':'change-down'):''}">${h.todayPnl!=null?`<span>${h.todayPnl>=0?'+':''}Rs ${fmt(Math.abs(h.todayPnl),0)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+        <td class="right" onclick="event.stopPropagation()"><button class="plan-btn" onclick="openPlanModal('${h.symbol}')">Plan</button></td>
       </tr>`;
     }).join('');
   }
