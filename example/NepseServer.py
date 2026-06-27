@@ -26,7 +26,7 @@ app.config["PROPAGATE_EXCEPTIONS"] = True
 nepse = Nepse()
 nepse.setTLSVerification(False)
 
-REFRESH_INTERVAL = 5  # seconds
+REFRESH_INTERVAL = 60  # seconds
 
 _cache = {}
 _cache_lock = threading.Lock()
