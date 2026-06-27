@@ -893,6 +893,129 @@
     }
 
     .sentiment-card:hover { background: var(--border); }
+
+    /* ══════════════════════════════════════════
+       MOBILE BOTTOM NAV
+    ══════════════════════════════════════════ */
+    #mobileNav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      z-index: 100;
+      padding: 0 2px;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .mob-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 4px 2px;
+      transition: color 0.2s;
+      min-width: 0;
+    }
+
+    .mob-tab.active { color: var(--accent); }
+    .mob-icon { font-size: 17px; line-height: 1; }
+    .mob-label {
+      font-size: 9px; font-weight: 600; letter-spacing: 0.2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    }
+
+    /* ══════════════════════════════════════════
+       RESPONSIVE — TABLET (640px–1023px)
+    ══════════════════════════════════════════ */
+    @media (max-width: 1023px) {
+      header { padding: 0 14px; gap: 8px; }
+      .nav-tabs {
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; flex-shrink: 1;
+      }
+      .nav-tabs::-webkit-scrollbar { display: none; }
+      .last-updated, #autoRefreshBadge { display: none; }
+      main { padding: 16px; gap: 16px; }
+      .three-col { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ══════════════════════════════════════════
+       RESPONSIVE — MOBILE (≤639px, iPhone 12+)
+    ══════════════════════════════════════════ */
+    @media (max-width: 639px) {
+      /* Header */
+      header { padding: 0 12px; height: 52px; }
+      .logo { font-size: 15px; gap: 7px; }
+      .logo-icon { width: 28px; height: 28px; font-size: 14px; }
+      .nav-tabs { display: none; }
+      .status-text-label { display: none; }
+      .last-updated, #autoRefreshBadge { display: none; }
+      .refresh-label { display: none; }
+      #mobileNav { display: flex; }
+
+      /* Main content */
+      main { padding: 10px; gap: 12px; padding-bottom: 68px; }
+
+      /* Stats grid — 2 columns on mobile */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .stat-card { padding: 12px 14px; }
+      .stat-value { font-size: 18px; }
+
+      /* Index row — single column */
+      .index-row { grid-template-columns: 1fr; }
+      .index-value { font-size: 22px; }
+
+      /* Two/three column layouts — stack */
+      .two-col, .three-col { grid-template-columns: 1fr; }
+
+      /* Panel headers */
+      .panel-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+
+      /* Tables — horizontal scroll */
+      .panel { overflow: visible; }
+      .scrollable-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 460px; }
+      .pf-table th, .pf-table td { white-space: nowrap; }
+
+      /* Charts */
+      .chart-container { height: 200px; padding: 12px; }
+
+      /* Portfolio stats — 2 columns */
+      .pf-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .pf-stat { padding: 12px 14px; }
+      .pf-stat-value { font-size: 17px; }
+
+      /* Upload zone */
+      .upload-zone { padding: 28px 16px; }
+      .upload-zone h2 { font-size: 15px; }
+
+      /* Modals — slide up from bottom */
+      .modal-backdrop { padding: 0; align-items: flex-end; }
+      .modal { border-radius: 16px 16px 0 0; max-height: 88vh; }
+
+      /* Stock info card stats grid — 2 columns */
+      .card-stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        margin-left: 0 !important;
+        width: 100%;
+      }
+
+      /* Filter bars — wrap */
+      .pf-filter-bar { gap: 6px; }
+      .filter-chip, .sig-filter { padding: 5px 10px; font-size: 11px; }
+
+      /* Signal stat cards */
+      .sig-stat-card { min-width: 90px; padding: 10px 12px; }
+      .sig-stat-card .ss-val { font-size: 18px; }
+    }
   </style>
 </head>
 <body>
@@ -904,28 +1027,53 @@
   </div>
 
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showView('market', this)">📊 Market</button>
-    <button class="nav-tab" onclick="showView('charts', this)">📈 Charts</button>
-    <button class="nav-tab" onclick="showView('screener', this)">🔬 Screener</button>
-    <button class="nav-tab" onclick="showView('signals', this)">⚡ Signals</button>
-    <button class="nav-tab" onclick="showView('brokers', this)">🏦 Brokers</button>
-    <button class="nav-tab" onclick="showView('portfolio', this)">💼 Portfolio</button>
-    <button class="nav-tab" onclick="showView('ai', this)">🤖 AI Reports</button>
+    <button id="navMarket"    class="nav-tab active" onclick="showView('market', this)">📊 Market</button>
+    <button id="navCharts"    class="nav-tab" onclick="showView('charts', this)">📈 Charts</button>
+    <button id="navScreener"  class="nav-tab" onclick="showView('screener', this)">🔬 Screener</button>
+    <button id="navSignals"   class="nav-tab" onclick="showView('signals', this)">⚡ Signals</button>
+    <button id="navBrokers"   class="nav-tab" onclick="showView('brokers', this)">🏦 Brokers</button>
+    <button id="navPortfolio" class="nav-tab" onclick="showView('portfolio', this)">💼 Portfolio</button>
+    <button id="navAi"        class="nav-tab" onclick="showView('ai', this)">🤖 AI Reports</button>
   </div>
 
   <div class="header-right">
     <div class="market-badge">
       <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Checking...</span>
+      <span id="statusText" class="status-text-label">Checking...</span>
     </div>
     <span class="last-updated" id="lastUpdated"></span>
     <span id="autoRefreshBadge" style="font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:.2px"></span>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
-      <span id="refreshIcon">↻</span> Refresh
+      <span id="refreshIcon">↻</span><span class="refresh-label"> Refresh</span>
     </button>
   </div>
 </header>
+
+<!-- Mobile Bottom Navigation -->
+<nav id="mobileNav" aria-label="Mobile navigation">
+  <button class="mob-tab active" data-view="market"    onclick="showView('market',    document.getElementById('navMarket'))">
+    <span class="mob-icon">📊</span><span class="mob-label">Market</span>
+  </button>
+  <button class="mob-tab" data-view="charts"    onclick="showView('charts',    document.getElementById('navCharts'))">
+    <span class="mob-icon">📈</span><span class="mob-label">Charts</span>
+  </button>
+  <button class="mob-tab" data-view="screener"  onclick="showView('screener',  document.getElementById('navScreener'))">
+    <span class="mob-icon">🔬</span><span class="mob-label">Screener</span>
+  </button>
+  <button class="mob-tab" data-view="signals"   onclick="showView('signals',   document.getElementById('navSignals'))">
+    <span class="mob-icon">⚡</span><span class="mob-label">Signals</span>
+  </button>
+  <button class="mob-tab" data-view="brokers"   onclick="showView('brokers',   document.getElementById('navBrokers'))">
+    <span class="mob-icon">🏦</span><span class="mob-label">Brokers</span>
+  </button>
+  <button class="mob-tab" data-view="portfolio" onclick="showView('portfolio', document.getElementById('navPortfolio'))">
+    <span class="mob-icon">💼</span><span class="mob-label">Portfolio</span>
+  </button>
+  <button class="mob-tab" data-view="ai"        onclick="showView('ai',        document.getElementById('navAi'))">
+    <span class="mob-icon">🤖</span><span class="mob-label">AI</span>
+  </button>
+</nav>
 
 <!-- ══════════════ MARKET VIEW ══════════════ -->
 <main id="marketView">
@@ -1232,7 +1380,7 @@
         <div style="font-size:32px;font-weight:700;letter-spacing:-1px" id="cardLTP">—</div>
         <div style="font-size:14px;font-weight:600" id="cardChange">—</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;font-size:13px;margin-left:auto">
+      <div class="card-stats-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;font-size:13px;margin-left:auto">
         <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">52W High</div><div id="card52H" style="font-weight:600;color:var(--green)">—</div></div>
         <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">52W Low</div><div id="card52L" style="font-weight:600;color:var(--red)">—</div></div>
         <div><div style="color:var(--muted);font-size:11px;margin-bottom:2px">Avg Price</div><div id="cardAvg" style="font-weight:600">—</div></div>
@@ -1950,7 +2098,7 @@
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  const API = 'http://127.0.0.1:8000';
+  const API = window.location.origin;
 
   // ── State ─────────────────────────────────────────
   let allStocks = [];
@@ -2029,6 +2177,8 @@
       document.getElementById(v+'View').style.display = v===view ? '' : 'none');
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
+    document.querySelectorAll('.mob-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.view === view));
     if(view === 'screener') { populateSectorFilter(); applyScreener(); }
     if(view === 'signals' && !adData.accumulation.length) loadADMarket();
     if(view === 'brokers' && !brokerData.length) loadBrokerSummary();
