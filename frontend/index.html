@@ -904,8 +904,10 @@
       height: 60px;
       background: var(--surface);
       border-top: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       z-index: 100;
-      padding: 0 2px;
+      padding: 0 4px;
       padding-bottom: env(safe-area-inset-bottom);
     }
 
@@ -915,21 +917,95 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 2px;
+      gap: 3px;
       background: none;
       border: none;
       cursor: pointer;
       color: var(--muted);
-      padding: 4px 2px;
+      padding: 6px 4px 4px;
       transition: color 0.2s;
       min-width: 0;
+      position: relative;
+      border-radius: 10px;
+    }
+
+    .mob-tab::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 20%; right: 20%;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 0 0 2px 2px;
+      opacity: 0;
+      transition: opacity 0.2s;
     }
 
     .mob-tab.active { color: var(--accent); }
-    .mob-icon { font-size: 17px; line-height: 1; }
+    .mob-tab.active::before { opacity: 1; }
+    .mob-tab.active .mob-icon-wrap {
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      border-radius: 8px;
+    }
+
+    .mob-icon-wrap {
+      width: 36px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .mob-icon { font-size: 16px; line-height: 1; }
     .mob-label {
-      font-size: 9px; font-weight: 600; letter-spacing: 0.2px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.2px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    }
+
+    /* More drawer */
+    #moreDrawer {
+      display: none;
+      position: fixed;
+      bottom: 60px; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-radius: 16px 16px 0 0;
+      z-index: 99;
+      padding: 12px 8px;
+      padding-bottom: env(safe-area-inset-bottom);
+      box-shadow: 0 -8px 32px rgba(0,0,0,.35);
+    }
+
+    #moreDrawer.open { display: block; }
+
+    .more-drawer-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .more-item {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 6px; padding: 14px 8px;
+      border-radius: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      cursor: pointer; color: var(--muted);
+      font-size: 12px; font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .more-item:active, .more-item.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface2)); border-color: var(--accent); }
+    .more-item span:first-child { font-size: 22px; }
+
+    #moreOverlay {
+      display: none; position: fixed; inset: 0;
+      z-index: 98; background: rgba(0,0,0,.4);
+    }
+    #moreOverlay.open { display: block; }
+
+    /* Mobile header view title */
+    #mobileViewTitle {
+      display: none;
+      font-size: 13px; font-weight: 700; color: var(--text);
     }
 
     /* ══════════════════════════════════════════
@@ -960,6 +1036,7 @@
       .last-updated, #autoRefreshBadge { display: none; }
       .refresh-label { display: none; }
       #mobileNav { display: flex; }
+      #mobileViewTitle { display: block; }
 
       /* Main content */
       main { padding: 10px; gap: 12px; padding-bottom: 68px; }
@@ -1036,6 +1113,8 @@
     <button id="navAi"        class="nav-tab" onclick="showView('ai', this)">🤖 AI Reports</button>
   </div>
 
+  <span id="mobileViewTitle">Market</span>
+
   <div class="header-right">
     <div class="market-badge">
       <div class="status-dot" id="statusDot"></div>
@@ -1053,27 +1132,37 @@
 <!-- Mobile Bottom Navigation -->
 <nav id="mobileNav" aria-label="Mobile navigation">
   <button class="mob-tab active" data-view="market"    onclick="showView('market',    document.getElementById('navMarket'))">
-    <span class="mob-icon">📊</span><span class="mob-label">Market</span>
+    <span class="mob-icon-wrap"><span class="mob-icon">📊</span></span><span class="mob-label">Market</span>
   </button>
   <button class="mob-tab" data-view="charts"    onclick="showView('charts',    document.getElementById('navCharts'))">
-    <span class="mob-icon">📈</span><span class="mob-label">Charts</span>
-  </button>
-  <button class="mob-tab" data-view="screener"  onclick="showView('screener',  document.getElementById('navScreener'))">
-    <span class="mob-icon">🔬</span><span class="mob-label">Screener</span>
-  </button>
-  <button class="mob-tab" data-view="signals"   onclick="showView('signals',   document.getElementById('navSignals'))">
-    <span class="mob-icon">⚡</span><span class="mob-label">Signals</span>
-  </button>
-  <button class="mob-tab" data-view="brokers"   onclick="showView('brokers',   document.getElementById('navBrokers'))">
-    <span class="mob-icon">🏦</span><span class="mob-label">Brokers</span>
+    <span class="mob-icon-wrap"><span class="mob-icon">📈</span></span><span class="mob-label">Charts</span>
   </button>
   <button class="mob-tab" data-view="portfolio" onclick="showView('portfolio', document.getElementById('navPortfolio'))">
-    <span class="mob-icon">💼</span><span class="mob-label">Portfolio</span>
+    <span class="mob-icon-wrap"><span class="mob-icon">💼</span></span><span class="mob-label">Portfolio</span>
   </button>
-  <button class="mob-tab" data-view="ai"        onclick="showView('ai',        document.getElementById('navAi'))">
-    <span class="mob-icon">🤖</span><span class="mob-label">AI</span>
+  <button class="mob-tab" data-view="signals"   onclick="showView('signals',   document.getElementById('navSignals'))">
+    <span class="mob-icon-wrap"><span class="mob-icon">⚡</span></span><span class="mob-label">Signals</span>
+  </button>
+  <button class="mob-tab" id="moreBtn" data-view="more" onclick="toggleMoreDrawer()">
+    <span class="mob-icon-wrap"><span class="mob-icon">•••</span></span><span class="mob-label">More</span>
   </button>
 </nav>
+
+<!-- More drawer -->
+<div id="moreOverlay" onclick="closeMoreDrawer()"></div>
+<div id="moreDrawer">
+  <div class="more-drawer-grid">
+    <button class="more-item" data-view="screener" onclick="showView('screener', document.getElementById('navScreener'));closeMoreDrawer()">
+      <span>🔬</span><span>Screener</span>
+    </button>
+    <button class="more-item" data-view="brokers" onclick="showView('brokers', document.getElementById('navBrokers'));closeMoreDrawer()">
+      <span>🏦</span><span>Brokers</span>
+    </button>
+    <button class="more-item" data-view="ai" onclick="showView('ai', document.getElementById('navAi'));closeMoreDrawer()">
+      <span>🤖</span><span>AI Reports</span>
+    </button>
+  </div>
+</div>
 
 <!-- ══════════════ MARKET VIEW ══════════════ -->
 <main id="marketView">
@@ -2172,16 +2261,41 @@
   }
 
   // ── View switching ────────────────────────────────
+  const VIEW_LABELS = { market:'Market', charts:'Charts', screener:'Screener', signals:'Signals', brokers:'Brokers', portfolio:'Portfolio', ai:'AI Reports' };
+  const MORE_VIEWS  = new Set(['screener','brokers','ai']);
+
   function showView(view, el) {
     ['market','charts','screener','signals','brokers','portfolio','ai'].forEach(v =>
       document.getElementById(v+'View').style.display = v===view ? '' : 'none');
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
+
+    // Sync bottom nav — primary tabs or "More" button
+    const inMore = MORE_VIEWS.has(view);
     document.querySelectorAll('.mob-tab').forEach(t =>
+      t.classList.toggle('active', inMore ? t.id === 'moreBtn' : t.dataset.view === view));
+
+    // Sync More drawer item highlight
+    document.querySelectorAll('.more-item').forEach(t =>
       t.classList.toggle('active', t.dataset.view === view));
+
+    // Update mobile header title
+    const titleEl = document.getElementById('mobileViewTitle');
+    if(titleEl) titleEl.textContent = VIEW_LABELS[view] || '';
+
     if(view === 'screener') { populateSectorFilter(); applyScreener(); }
     if(view === 'signals' && !adData.accumulation.length) loadADMarket();
     if(view === 'brokers' && !brokerData.length) loadBrokerSummary();
+  }
+
+  function toggleMoreDrawer() {
+    const open = document.getElementById('moreDrawer').classList.toggle('open');
+    document.getElementById('moreOverlay').classList.toggle('open', open);
+  }
+
+  function closeMoreDrawer() {
+    document.getElementById('moreDrawer').classList.remove('open');
+    document.getElementById('moreOverlay').classList.remove('open');
   }
 
   // ── Theme ─────────────────────────────────────────
