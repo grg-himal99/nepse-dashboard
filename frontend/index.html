@@ -332,6 +332,7 @@
     }
 
     @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .skel-init td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
 
     /* ── Tabs ── */
     .tabs { display:flex; gap:4px; background:var(--bg); padding:4px; border-radius:8px; }
@@ -1332,7 +1333,7 @@
                 <th class="right" onclick="glSort('percentageChange')" style="cursor:pointer;user-select:none" id="glTh-percentageChange">% Change</th>
               </tr>
             </thead>
-            <tbody id="glTable"><tr><td colspan="4"><div class="no-data">Loading...</div></td></tr></tbody>
+            <tbody id="glTable" class="skel-init" data-skel-widths="60,45,45,45" data-skel-rows="8"></tbody>
           </table>
         </div>
       </div>
@@ -1423,7 +1424,7 @@
               <th class="right">Depth</th>
             </tr>
           </thead>
-          <tbody id="stockTable"><tr><td colspan="8"><div class="no-data">Loading...</div></td></tr></tbody>
+          <tbody id="stockTable" class="skel-init" data-skel-widths="55,120,45,45,45,50,70,40" data-skel-rows="10"></tbody>
         </table>
       </div>
     </div>
@@ -1750,9 +1751,7 @@
 
   <!-- Buy vs Sell table -->
   <div class="panel">
-    <div id="brokerTable" style="overflow-x:auto">
-      <div style="padding:48px;text-align:center;color:var(--muted)">Loading broker data…</div>
-    </div>
+    <div id="brokerTable" style="overflow-x:auto" class="skel-init" data-skel-widths="24,100,55,60,55,60,55,60,50" data-skel-rows="15" data-skel-wrap="1"></div>
   </div>
 
 </main>
@@ -2254,6 +2253,17 @@
   const arrow = v => v>0?'▲':v<0?'▼':'—';
   const chip = (v, label) => `<span class="chip ${v>0?'up':v<0?'down':'neutral'}">${v>0?'▲':'▼'} ${label}</span>`;
 
+  // ── Skeleton helpers ──────────────────────────────
+  function skelRows(widths, n) {
+    const cells = widths.map((w, i) =>
+      `<td${i > 0 ? ' class="right"' : ''}><div class="skeleton" style="height:13px;width:${w}px;border-radius:4px;${i > 0 ? 'margin-left:auto;' : ''}">&nbsp;</div></td>`
+    ).join('');
+    return `<tr>${cells}</tr>`.repeat(n);
+  }
+  function skelTable(widths, n, colspan) {
+    return `<table style="width:100%;border-collapse:collapse"><tbody>${skelRows(widths, n)}</tbody></table>`;
+  }
+
   async function apiFetch(path) {
     const res = await fetch(`${API}${path}`);
     if(!res.ok) throw new Error(res.status);
@@ -2713,6 +2723,17 @@
     setLoading(false);
     loadDepth();
   }
+
+  // Initialise skeleton placeholders declared in HTML via data attributes
+  document.querySelectorAll('.skel-init').forEach(el => {
+    const widths = (el.dataset.skelWidths || '80').split(',').map(Number);
+    const n      = parseInt(el.dataset.skelRows || '6', 10);
+    const wrap   = el.dataset.skelWrap === '1';
+    const rows   = skelRows(widths, n);
+    el.innerHTML = wrap
+      ? `<table style="width:100%;border-collapse:collapse"><tbody>${rows}</tbody></table>`
+      : rows;
+  });
 
   loadAll();
 
@@ -3583,7 +3604,7 @@
   }
 
   function adLoadingHTML() {
-    return `<div style="padding:24px;text-align:center;color:var(--muted)">Loading…</div>`;
+    return skelTable([20,60,80,45,55,50], 8);
   }
 
   function populateADSectorFilter() {
@@ -3734,6 +3755,7 @@
       b.classList.toggle('active', b.dataset.period === brokerPeriod));
     const statusEl = document.getElementById('brokerLoadStatus');
     statusEl.textContent = 'Loading…';
+    document.getElementById('brokerTable').innerHTML = skelTable([24,100,55,60,55,60,55,60,50], 15);
     try {
       const data = await apiFetch(`/broker/summary?period=${brokerPeriod}`);
       brokerData = data.brokers || [];
