@@ -180,6 +180,50 @@
     .refresh-btn:hover { background: var(--border); }
     .refresh-btn.loading { opacity: 0.6; pointer-events: none; }
 
+    /* ── Price Alerts ── */
+    #alertBellWrap { position: relative; }
+    .alert-badge {
+      position: absolute; top: -5px; right: -5px;
+      background: var(--accent); color: #fff;
+      font-size: 9px; font-weight: 700;
+      min-width: 15px; height: 15px;
+      border-radius: 8px; padding: 0 3px;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1; pointer-events: none;
+    }
+    #toastContainer {
+      position: fixed; bottom: 80px; right: 20px;
+      z-index: 9999; display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px;
+      font-size: 13px; color: var(--text);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      animation: toastIn 0.3s ease, toastOut 0.4s 3.6s ease forwards;
+      pointer-events: all; max-width: 300px;
+    }
+    .toast.up   { border-left: 3px solid var(--green); }
+    .toast.down { border-left: 3px solid var(--red); }
+    @keyframes toastIn  { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes toastOut { from{opacity:1} to{opacity:0} }
+    .alert-row-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 13px;
+      padding: 2px 5px; border-radius: 4px;
+      transition: color 0.15s; vertical-align: middle;
+    }
+    .alert-row-btn:hover { color: var(--accent); }
+    .alert-row-btn.set   { color: var(--accent); }
+    .alert-set-btn {
+      width: 100%; padding: 10px; border-radius: 8px;
+      background: var(--accent); color: #fff;
+      border: none; cursor: pointer; font-size: 14px; font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    .alert-set-btn:hover { opacity: 0.88; }
+
     /* ── Main ── */
     main {
       max-width: 1400px;
@@ -1124,6 +1168,10 @@
     </div>
     <span class="last-updated" id="lastUpdated"></span>
     <span id="autoRefreshBadge" style="font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:.2px"></span>
+    <div id="alertBellWrap">
+      <button class="icon-btn" onclick="openAlertsPanel()" title="Price Alerts">🔔</button>
+      <span class="alert-badge" id="alertBadge" style="display:none">0</span>
+    </div>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
       <span id="refreshIcon">↻</span><span class="refresh-label"> Refresh</span>
@@ -2082,6 +2130,47 @@
 </main>
 
 <!-- ══════════════ DEPTH / ORDER BOOK MODAL ══════════════ -->
+<!-- ── Price Alerts Modal ── -->
+<div class="modal-backdrop" id="alertsModal" onclick="closeAlertsModal(event)">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title">🔔 Price Alerts</div>
+      <button class="modal-close" onclick="closeAlertsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Add form -->
+      <div>
+        <div class="modal-section-title">New Alert</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="position:relative">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Symbol <span id="alertCurrPrice" style="font-weight:600;color:var(--text)"></span></label>
+            <input id="alertSymInput" type="text" class="scr-input" placeholder="e.g. NABIL" autocomplete="off"
+              oninput="filterAlertSym()" onblur="setTimeout(()=>document.getElementById('alertSymDd').innerHTML='',200)">
+            <div id="alertSymDd"></div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Condition</label>
+            <div style="display:flex;gap:8px">
+              <button id="alertCondAbove" class="chart-toggle active" onclick="setAlertCond('above')" style="flex:1">▲ Above</button>
+              <button id="alertCondBelow" class="chart-toggle" onclick="setAlertCond('below')" style="flex:1">▼ Below</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Target Price (Rs)</label>
+            <input id="alertTargetInput" type="number" class="scr-input" placeholder="e.g. 1500" min="0">
+          </div>
+          <button class="alert-set-btn" onclick="saveAlert()">Set Alert</button>
+        </div>
+      </div>
+      <!-- Active list -->
+      <div>
+        <div class="modal-section-title">Your Alerts</div>
+        <div id="alertsList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="depthModal" onclick="closeDepthModal(event)">
   <div class="modal wide">
     <div class="modal-header">
@@ -2264,6 +2353,157 @@
   function skelTable(widths, n, colspan) {
     return `<table style="width:100%;border-collapse:collapse"><tbody>${skelRows(widths, n)}</tbody></table>`;
   }
+
+  // ── Price Alerts ──────────────────────────────────
+  let alerts = JSON.parse(localStorage.getItem('nepse_alerts') || '[]');
+  let alertCond = 'above';
+
+  function saveAlertsLS() { localStorage.setItem('nepse_alerts', JSON.stringify(alerts)); }
+
+  function updateAlertBadge() {
+    const n = alerts.filter(a => !a.triggered).length;
+    const badge = document.getElementById('alertBadge');
+    badge.textContent = n;
+    badge.style.display = n > 0 ? 'flex' : 'none';
+  }
+
+  function openAlertsPanel(symbol) {
+    const sym = (symbol || '').toUpperCase();
+    const symInput = document.getElementById('alertSymInput');
+    symInput.value = sym;
+    const s = liveMap[sym];
+    document.getElementById('alertCurrPrice').textContent = s ? `— Rs ${fmt(s.lastTradedPrice)}` : '';
+    document.getElementById('alertTargetInput').value = '';
+    renderAlertsList();
+    document.getElementById('alertsModal').classList.add('open');
+  }
+
+  function closeAlertsModal(e) {
+    if(e && e.target !== document.getElementById('alertsModal')) return;
+    document.getElementById('alertsModal').classList.remove('open');
+    document.getElementById('alertSymDd').innerHTML = '';
+  }
+
+  function setAlertCond(cond) {
+    alertCond = cond;
+    document.getElementById('alertCondAbove').classList.toggle('active', cond === 'above');
+    document.getElementById('alertCondBelow').classList.toggle('active', cond === 'below');
+  }
+
+  function filterAlertSym() {
+    const q = document.getElementById('alertSymInput').value.trim().toLowerCase();
+    const dd = document.getElementById('alertSymDd');
+    if(!q || !allStocks.length) { dd.innerHTML = ''; return; }
+    const matches = allStocks.filter(s =>
+      s.symbol.toLowerCase().startsWith(q) || (s.securityName||'').toLowerCase().includes(q)
+    ).slice(0, 8);
+    if(!matches.length) { dd.innerHTML = ''; return; }
+    dd.innerHTML = `<div class="chart-dd" style="z-index:9999">` +
+      matches.map(s => `<div class="chart-dd-item" onmousedown="pickAlertSym('${s.symbol}',${s.lastTradedPrice||0})">
+        <span><strong>${s.symbol}</strong> <span style="color:var(--muted);font-size:12px">${s.securityName||''}</span></span>
+        <span style="color:var(--text);font-size:12px">Rs ${fmt(s.lastTradedPrice)}</span>
+      </div>`).join('') + `</div>`;
+  }
+
+  function pickAlertSym(symbol, ltp) {
+    document.getElementById('alertSymInput').value = symbol;
+    document.getElementById('alertCurrPrice').textContent = `— Rs ${fmt(ltp)}`;
+    document.getElementById('alertSymDd').innerHTML = '';
+    document.getElementById('alertTargetInput').focus();
+  }
+
+  function saveAlert() {
+    const symbol = document.getElementById('alertSymInput').value.trim().toUpperCase();
+    const target = parseFloat(document.getElementById('alertTargetInput').value);
+    if(!symbol) { showToast('Please enter a symbol.', 'neutral'); return; }
+    if(isNaN(target) || target <= 0) { showToast('Please enter a valid target price.', 'neutral'); return; }
+    alerts.push({ id: Date.now(), symbol, condition: alertCond, target, triggered: false });
+    saveAlertsLS();
+    updateAlertBadge();
+    renderAlertsList();
+    filterStocks();
+    document.getElementById('alertTargetInput').value = '';
+    showToast(`Alert set: ${symbol} ${alertCond === 'above' ? '▲ above' : '▼ below'} Rs ${fmt(target)}`);
+    if(Notification.permission === 'default') Notification.requestPermission();
+  }
+
+  function deleteAlert(id) {
+    alerts = alerts.filter(a => a.id !== id);
+    saveAlertsLS();
+    updateAlertBadge();
+    renderAlertsList();
+    filterStocks();
+  }
+
+  function clearTriggeredAlerts() {
+    alerts = alerts.filter(a => !a.triggered);
+    saveAlertsLS();
+    updateAlertBadge();
+    renderAlertsList();
+  }
+
+  function renderAlertsList() {
+    const el = document.getElementById('alertsList');
+    if(!el) return;
+    if(!alerts.length) {
+      el.innerHTML = `<div style="text-align:center;color:var(--muted);padding:24px 0;font-size:13px">No alerts yet. Set one above!</div>`;
+      return;
+    }
+    const active    = alerts.filter(a => !a.triggered);
+    const triggered = alerts.filter(a =>  a.triggered);
+    const row = a => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span class="symbol-badge">${a.symbol}</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:8px">
+          ${a.condition==='above'?'▲ above':'▼ below'}
+          <strong style="color:var(--text)"> Rs ${fmt(a.target)}</strong>
+        </span>
+        ${a.triggered ? '<span style="font-size:11px;color:var(--green);margin-left:6px">✓ triggered</span>' : ''}
+      </div>
+      <button onclick="deleteAlert(${a.id})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:2px 8px;border-radius:4px;line-height:1" title="Remove">✕</button>
+    </div>`;
+    let html = active.map(row).join('');
+    if(triggered.length) {
+      html += `<div style="margin-top:14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;border-bottom:1px solid var(--border)">Triggered</div>`;
+      html += `<div style="opacity:0.55">${triggered.map(row).join('')}</div>`;
+      html += `<button onclick="clearTriggeredAlerts()" style="margin-top:10px;font-size:12px;color:var(--muted);background:none;border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer">Clear triggered</button>`;
+    }
+    el.innerHTML = html;
+  }
+
+  function checkAlerts() {
+    if(!alerts.length || !Object.keys(liveMap).length) return;
+    let changed = false;
+    alerts.forEach(a => {
+      if(a.triggered) return;
+      const s = liveMap[a.symbol];
+      if(!s) return;
+      const ltp = s.lastTradedPrice;
+      const hit = (a.condition === 'above' && ltp >= a.target) || (a.condition === 'below' && ltp <= a.target);
+      if(!hit) return;
+      a.triggered = true;
+      changed = true;
+      const dir = a.condition === 'above' ? 'up' : 'down';
+      showToast(`🔔 ${a.symbol} hit Rs ${fmt(ltp)} (${a.condition} Rs ${fmt(a.target)})`, dir);
+      if(Notification.permission === 'granted') {
+        new Notification(`NEPSE Alert: ${a.symbol}`, {
+          body: `Price Rs ${fmt(ltp)} is ${a.condition} your target Rs ${fmt(a.target)}`
+        });
+      }
+    });
+    if(changed) { saveAlertsLS(); updateAlertBadge(); }
+  }
+
+  function showToast(msg, type) {
+    const c = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = 'toast' + (type === 'up' ? ' up' : type === 'down' ? ' down' : '');
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  updateAlertBadge();
 
   async function apiFetch(path) {
     const res = await fetch(`${API}${path}`);
@@ -2472,6 +2712,7 @@
       if(portfolio.length) renderPortfolio();
       renderSOTD();
       renderSectorOfDay();
+      checkAlerts();
     } catch {
       document.getElementById('stockTable').innerHTML=`<tr><td colspan="6"><div class="no-data">Failed to load</div></td></tr>`;
     }
@@ -2500,7 +2741,10 @@
         <td class="right ${changeClass(pct)}">${pct>=0?'+':''}${fmt(pct)}%</td>
         <td class="right">${fmt(s.totalTradeQuantity,0)}</td>
         <td class="right">${obCell}</td>
-        <td class="right"><button class="depth-btn" onclick="openDepthModal('${s.symbol}')">📖 Depth</button></td>
+        <td class="right" style="white-space:nowrap">
+          <button class="alert-row-btn${alerts.some(a=>!a.triggered&&a.symbol===s.symbol)?' set':''}" onclick="event.stopPropagation();openAlertsPanel('${s.symbol}')" title="Set price alert">🔔</button>
+          <button class="depth-btn" onclick="openDepthModal('${s.symbol}')">📖 Depth</button>
+        </td>
       </tr>`;
     }).join('');
   }
@@ -5347,5 +5591,6 @@
     card.style.display = 'flex';
   }
 </script>
+<div id="toastContainer"></div>
 </body>
 </html>
