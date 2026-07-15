@@ -1500,6 +1500,7 @@
           <div style="width:1px;height:18px;background:var(--border);margin:0 2px"></div>
           <button class="chart-toggle active" data-key="rsi"    onclick="toggleIndicator('rsi',this)"    data-tip="Relative Strength Index (14) — momentum indicator. Above 70 = overbought, below 30 = oversold.">RSI</button>
           <button class="chart-toggle"        data-key="ichi"   onclick="toggleIndicator('ichi',this)"   data-tip="Ichimoku Cloud — trend, support/resistance &amp; momentum. Green cloud = bullish zone, red = bearish zone. Price above cloud = strong uptrend.">Ichimoku</button>
+          <button class="chart-toggle"        data-key="macd"   onclick="toggleIndicator('macd',this)"   data-tip="MACD (12,26,9) — momentum indicator. MACD crossing above signal = bullish. Histogram above zero = strengthening momentum.">MACD</button>
         </div>
       </div>
       <div style="position:relative">
@@ -1523,6 +1524,15 @@
         <span style="font-size:12px;color:var(--muted)">Overbought >70 · Oversold &lt;30</span>
       </div>
       <div style="padding:12px 16px;height:130px;position:relative"><canvas id="rsiChart"></canvas></div>
+    </div>
+
+    <!-- MACD -->
+    <div class="panel" id="macdPanel" style="display:none">
+      <div class="panel-header">
+        <div class="panel-title"><div class="dot" style="background:#6366f1"></div>MACD (12, 26, 9)</div>
+        <span style="font-size:12px;color:var(--muted)" id="macdLabel"></span>
+      </div>
+      <div style="padding:12px 16px;height:140px;position:relative"><canvas id="macdChart"></canvas></div>
     </div>
 
     <!-- A/D Line -->
@@ -2240,8 +2250,8 @@
   let lwSRLines = [];
   let lwTenkan = null, lwKijun = null, lwSpanA = null, lwSpanB = null, lwChikou = null;
   let _ichiDates = [], _ichiSpanAVals = [], _ichiSpanBVals = [];
-  let volChartInst = null, rsiChartInst = null, adChartInst = null;
-  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false, ichi: false, rsi: true };
+  let volChartInst = null, rsiChartInst = null, adChartInst = null, macdChartInst = null;
+  let chartIndicators = { ma20: true, ma50: false, ma200: false, hl: false, sr: false, ichi: false, rsi: true, macd: false };
   let chartMode = 'candle'; // 'candle' | 'area'
   let currentChartSymbol = null;
   let scrData = [];
@@ -2891,6 +2901,50 @@
     });
   }
 
+  // Exponential Moving Average — seeds with SMA for the first `period` bars,
+  // then applies the standard EMA multiplier k = 2/(period+1) going forward.
+  // Null slots (e.g. missing data) are skipped so alignment is preserved.
+  function calcEMA(values, period) {
+    const ema = new Array(values.length).fill(null);
+    const k = 2 / (period + 1);
+    let seed = 0, count = 0, started = false;
+    for(let i = 0; i < values.length; i++) {
+      if(values[i] == null) continue;
+      if(!started) {
+        seed += values[i];
+        count++;
+        if(count === period) { ema[i] = seed / period; started = true; }
+      } else {
+        // walk back to find the previous non-null EMA value
+        let prev = null;
+        for(let j = i-1; j >= 0; j--) { if(ema[j] != null) { prev = ema[j]; break; } }
+        ema[i] = values[i] * k + prev * (1 - k);
+      }
+    }
+    return ema;
+  }
+
+  // MACD (12, 26, 9) — returns three aligned arrays (same length as closes):
+  //   macdLine  = EMA12 - EMA26
+  //   signal    = EMA9 of macdLine
+  //   histogram = macdLine - signal  (positive = bullish momentum)
+  function calcMACD(closes) {
+    const ema12 = calcEMA(closes, 12);
+    const ema26 = calcEMA(closes, 26);
+    const macdLine = closes.map((_, i) =>
+      ema12[i] != null && ema26[i] != null ? ema12[i] - ema26[i] : null
+    );
+    // Extract non-null MACD values, compute EMA9, then re-align to original indices
+    const nonNull = macdLine.map((v, i) => ({ v, i })).filter(x => x.v != null);
+    const sigVals = calcEMA(nonNull.map(x => x.v), 9);
+    const signal = new Array(closes.length).fill(null);
+    nonNull.forEach((x, si) => { if(sigVals[si] != null) signal[x.i] = sigVals[si]; });
+    const histogram = closes.map((_, i) =>
+      macdLine[i] != null && signal[i] != null ? macdLine[i] - signal[i] : null
+    );
+    return { macdLine, signal, histogram };
+  }
+
   function calcRSI(closes, period = 14) {
     const rsi = new Array(closes.length).fill(null);
     if(closes.length < period + 1) return rsi;
@@ -3186,6 +3240,59 @@
         }
       });
 
+      // ── MACD chart (Chart.js) ──
+      if(macdChartInst) macdChartInst.destroy();
+      const { macdLine, signal: macdSignal, histogram: macdHist } = calcMACD(closes);
+      const lastMACD = macdLine[macdLine.length-1], lastSig = macdSignal[macdSignal.length-1];
+      const macdDiff = lastMACD != null && lastSig != null ? lastMACD - lastSig : null;
+      const macdLabelEl = document.getElementById('macdLabel');
+      if(macdLabelEl && macdDiff != null) {
+        const bull = macdDiff >= 0;
+        macdLabelEl.innerHTML = `MACD <strong style="color:${bull?'var(--green)':'var(--red)'}">${lastMACD?.toFixed(2)}</strong> · Signal <strong>${lastSig?.toFixed(2)}</strong> · Hist <strong style="color:${bull?'var(--green)':'var(--red)'}">${macdDiff>=0?'+':''}${macdDiff?.toFixed(2)}</strong>`;
+      }
+      const isLight = document.documentElement.classList.contains('light');
+      const gridCol = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
+      macdChartInst = new Chart(document.getElementById('macdChart').getContext('2d'), {
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              type: 'bar', label: 'Histogram', data: macdHist,
+              backgroundColor: macdHist.map(v => v == null ? 'transparent' : v >= 0 ? 'rgba(34,197,94,0.6)' : 'rgba(239,68,68,0.6)'),
+              borderWidth: 0, borderRadius: 1, order: 2,
+            },
+            {
+              type: 'line', label: 'MACD', data: macdLine,
+              borderColor: '#6366f1', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, order: 1,
+            },
+            {
+              type: 'line', label: 'Signal', data: macdSignal,
+              borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0, tension: 0.3, fill: false, order: 0,
+            },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: c => {
+                  if(c.datasetIndex === 0) return ` Hist: ${c.raw?.toFixed(2) ?? '—'}`;
+                  if(c.datasetIndex === 1) return ` MACD: ${c.raw?.toFixed(2) ?? '—'}`;
+                  return ` Signal: ${c.raw?.toFixed(2) ?? '—'}`;
+                },
+                filter: i => i.raw != null,
+              }
+            }
+          },
+          scales: {
+            x: { display: false },
+            y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: gridCol } }
+          }
+        }
+      });
+
       // ── A/D Line (Chart.js) ──
       if(adChartInst) adChartInst.destroy();
       const adVals = calcAD(highs, lows, closes, volumes);
@@ -3263,6 +3370,10 @@
     if(key === 'rsi') {
       const panel = document.getElementById('rsiPanel');
       if(panel) panel.style.display = chartIndicators.rsi ? '' : 'none';
+    }
+    if(key === 'macd') {
+      const panel = document.getElementById('macdPanel');
+      if(panel) panel.style.display = chartIndicators.macd ? '' : 'none';
     }
   }
 
