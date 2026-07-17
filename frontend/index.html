@@ -2555,10 +2555,10 @@
   function renderSentiment() {
     let filtered = depthData;
     if(sentimentFilter.type !== 'All') {
-      filtered = filtered.filter(d => d.instrumentType === sentimentFilter.type);
+      filtered = filtered.filter(d => (companyMap[d.symbol]?.instrumentType || d.instrumentType || '') === sentimentFilter.type);
     }
     if(sentimentFilter.sector !== 'All') {
-      filtered = filtered.filter(d => d.sectorName === sentimentFilter.sector);
+      filtered = filtered.filter(d => (companyMap[d.symbol]?.sectorName || d.sectorName || '') === sentimentFilter.sector);
     }
     const bullish = filtered.filter(d=>d.imbalance>0).sort((a,b)=>b.imbalance-a.imbalance).slice(0,8);
     const bearish = filtered.filter(d=>d.imbalance<0).sort((a,b)=>a.imbalance-b.imbalance).slice(0,8);
